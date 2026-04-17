@@ -1,0 +1,332 @@
+{
+  "name": "Nhanh_Check_Inventory_By_Location",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "product_query"
+            },
+            {
+              "name": "max_results",
+              "type": "number"
+            },
+            {
+              "name": "city_query"
+            },
+            {
+              "name": "district_query"
+            }
+          ]
+        }
+      },
+      "id": "6e893658-a10d-4ef0-b5d2-00648815774a",
+      "typeVersion": 1.1,
+      "name": "Execute Sub-workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "nhanh_api_tokens",
+          "mode": "list",
+          "cachedResultName": "nhanh_api_tokens"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "token_key",
+              "value": "nhanh_main"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        464,
+        320
+      ],
+      "id": "71400c0d-4274-49f6-9f0e-099bf82ea767",
+      "name": "PG Get Nhanh Token",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6ab656eb-c9bf-4b3d-b6da-927cb94f43c1",
+              "leftValue": "={{ !!String($json.access_token || '').trim() && !!String($json.app_id || '').trim() && !!String($json.business_id || '').trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        688,
+        320
+      ],
+      "id": "b0c7f19b-3540-4858-8fc0-5b3520faab06",
+      "name": "If Has Nhanh Token"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ `https://pos.open.nhanh.vn/v3.0/business/depot?appId=${$('PG Get Nhanh Token').first().json.app_id}&businessId=${$('PG Get Nhanh Token').first().json.business_id}` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('PG Get Nhanh Token').first().json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"filters\":{\"ids\":[]}}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        944,
+        272
+      ],
+      "id": "c8df5d6d-b312-469a-82b9-fd3e5f46cfcd",
+      "name": "HTTP Nhanh Get Depots",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Execute Sub-workflow Trigger').first().json || {};\nconst cityQuery = String(input.city_query || '').trim();\nconst districtQuery = String(input.district_query || '').trim();\n\nif ($json.error) {\n  return [\n    {\n      json: {\n        ok: false,\n        error_code: 'NHANH_DEPOT_API_ERROR',\n        message: String($json.error),\n        city_query: cityQuery,\n        district_query: districtQuery,\n        matched_depot_ids: [],\n        matched_total: 0,\n        items: [],\n      },\n    },\n  ];\n}\n\nconst normalize = (value) => String(value || '')\n  .toLowerCase()\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/tp\\.?/g, '')\n  .replace(/thanh pho/g, '')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst cityNeedle = normalize(cityQuery);\nconst districtNeedle = normalize(districtQuery);\nconst root = $json?.data ?? $json?.result ?? $json ?? {};\nconst rawItems = Array.isArray(root?.data)\n  ? root.data\n  : Array.isArray(root)\n    ? root\n    : [];\n\nconst items = rawItems\n  .map((item) => {\n    const location = item.location ?? {};\n    const cityName = String(location.cityName || '').trim();\n    const districtName = String(location.districtName || '').trim();\n    const cityNorm = normalize(cityName);\n    const districtNorm = normalize(districtName);\n\n    let matchScore = 0;\n    if (cityNeedle && cityNorm.includes(cityNeedle)) matchScore += 1;\n    if (districtNeedle && districtNorm.includes(districtNeedle)) matchScore += 2;\n\n    return {\n      id: item.id ?? null,\n      code: item.code ?? '',\n      name: item.name ?? '',\n      city_name: cityName,\n      district_name: districtName,\n      ward_name: String(location.wardName || '').trim(),\n      address: String(location.address || '').trim(),\n      match_score: matchScore,\n    };\n  })\n  .sort((a, b) => {\n    if (b.match_score !== a.match_score) return b.match_score - a.match_score;\n    return a.name.localeCompare(b.name, 'vi');\n  });\n\nconst matchedItems = items.filter((item) => item.match_score > 0);\nconst finalItems = matchedItems.length > 0 ? matchedItems : [];\n\nreturn [\n  {\n    json: {\n      ok: true,\n      city_query: cityQuery,\n      district_query: districtQuery,\n      matched_total: finalItems.length,\n      matched_depot_ids: finalItems.map((item) => item.id).filter((value) => value !== null),\n      items: finalItems,\n    },\n  },\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        272
+      ],
+      "id": "4d85a1d3-54ae-4cbe-8c72-cd405746ab8e",
+      "name": "Code Match Depots By Location"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Execute Sub-workflow Trigger').first().json || {};\nconst depotResult = $('Code Match Depots By Location').first().json || {};\n\nconst productQuery = String(input.product_query || '').trim();\nconst cityQuery = String(input.city_query || '').trim();\nconst districtQuery = String(input.district_query || '').trim();\nconst maxResults = Math.max(1, Math.min(20, Number(input.max_results || 5)));\nconst depotIds = Array.isArray(depotResult.matched_depot_ids) ? depotResult.matched_depot_ids : [];\n\nconst filters = {};\nif (productQuery) filters.name = productQuery;\nif (depotIds.length > 0) filters.depotIds = depotIds;\n\nreturn [\n  {\n    json: {\n      product_query: productQuery,\n      customer_city: cityQuery,\n      customer_district: districtQuery,\n      applied_depot_ids: depotIds,\n      request_body: {\n        filters,\n        paginator: {\n          size: maxResults\n        },\n        dataOptions: {}\n      }\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1424,
+        272
+      ],
+      "id": "07c95c6f-dfd6-4468-ab7c-fe53ec89d45e",
+      "name": "Code Build Inventory Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ `https://pos.open.nhanh.vn/v3.0/product/inventory?appId=${$('PG Get Nhanh Token').first().json.app_id}&businessId=${$('PG Get Nhanh Token').first().json.business_id}` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $('PG Get Nhanh Token').first().json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.request_body }}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1664,
+        272
+      ],
+      "id": "807a7b0d-3990-462d-bca6-a55eb702ff74",
+      "name": "HTTP Nhanh Product Inventory",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const triggerInput = $('Execute Sub-workflow Trigger').first().json || {};\nconst requestContext = $('Code Build Inventory Request').first().json || {};\nconst depotContext = $('Code Match Depots By Location').first().json || {};\n\nconst productQuery = String(triggerInput.product_query || '').trim();\nconst customerCity = String(triggerInput.city_query || '').trim();\nconst customerDistrict = String(triggerInput.district_query || '').trim();\nconst appliedDepotIds = Array.isArray(requestContext.applied_depot_ids) ? requestContext.applied_depot_ids : [];\n\nif ($json.error) {\n  return [\n    {\n      json: {\n        ok: false,\n        error_code: 'NHANH_API_ERROR',\n        message: String($json.error),\n        product_query: productQuery,\n        customer_city: customerCity,\n        customer_district: customerDistrict,\n        applied_depot_ids: appliedDepotIds,\n        matched_total: Number(depotContext.matched_total || 0),\n        total: 0,\n        available_count: 0,\n        available_items: [],\n        items: []\n      }\n    }\n  ];\n}\n\nconst root = $json?.data ?? $json?.result ?? $json ?? {};\nconst rawItems = Array.isArray(root?.products)\n  ? root.products\n  : Array.isArray(root?.data)\n    ? root.data\n    : Array.isArray(root)\n      ? root\n      : [];\n\nconst items = rawItems\n  .map((item) => {\n    const inventory = item.inventory ?? {};\n    return {\n      id: item.id ?? item.productId ?? null,\n      code: item.code ?? item.productCode ?? '',\n      name: item.name ?? '',\n      barcode: item.barcode ?? '',\n      price: Number(item?.prices?.price ?? 0),\n      remain: Number(inventory.remain ?? item.remain ?? 0),\n      available: Number(inventory.available ?? item.available ?? 0),\n      shipping: Number(inventory.shipping ?? item.shipping ?? 0),\n      holding: Number(inventory.holding ?? item.holding ?? 0),\n      damaged: Number(inventory.damaged ?? item.damaged ?? item.damage ?? 0),\n      depots: inventory.depots ?? item.depots ?? [],\n      has_stock: Number(inventory.available ?? item.available ?? 0) > 0\n    };\n  })\n  .sort((a, b) => {\n    if (b.available !== a.available) return b.available - a.available;\n    if (b.remain !== a.remain) return b.remain - a.remain;\n    return a.name.localeCompare(b.name, 'vi');\n  });\n\nconst availableItems = items.filter((item) => item.available > 0);\n\nreturn [\n  {\n    json: {\n      ok: true,\n      product_query: productQuery,\n      customer_city: customerCity,\n      customer_district: customerDistrict,\n      matched_total: Number(depotContext.matched_total || 0),\n      matched_depot_ids: Array.isArray(depotContext.matched_depot_ids) ? depotContext.matched_depot_ids : [],\n      applied_depot_ids: appliedDepotIds,\n      total: items.length,\n      available_count: availableItems.length,\n      available_items: availableItems,\n      items\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1904,
+        272
+      ],
+      "id": "b3182bc4-b2ef-4067-b6f6-238ca2497167",
+      "name": "Code Normalize Inventory Result"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $('Execute Sub-workflow Trigger').first().json || {};\nreturn [\n  {\n    json: {\n      ok: false,\n      error_code: 'NHANH_TOKEN_MISSING',\n      message: 'Khong tim thay access token Nhanh hop le trong Postgres',\n      product_query: String(input.product_query || '').trim(),\n      customer_city: String(input.city_query || '').trim(),\n      customer_district: String(input.district_query || '').trim(),\n      matched_total: 0,\n      matched_depot_ids: [],\n      applied_depot_ids: [],\n      total: 0,\n      available_count: 0,\n      available_items: [],\n      items: []\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        448
+      ],
+      "id": "692a0ec0-1afc-4ecb-a166-0d6bf91cc52c",
+      "name": "Code Missing Token Result"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Execute Sub-workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "PG Get Nhanh Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Get Nhanh Token": {
+      "main": [
+        [
+          {
+            "node": "If Has Nhanh Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Nhanh Token": {
+      "main": [
+        [
+          {
+            "node": "HTTP Nhanh Get Depots",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Missing Token Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Nhanh Get Depots": {
+      "main": [
+        [
+          {
+            "node": "Code Match Depots By Location",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Match Depots By Location": {
+      "main": [
+        [
+          {
+            "node": "Code Build Inventory Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build Inventory Request": {
+      "main": [
+        [
+          {
+            "node": "HTTP Nhanh Product Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Nhanh Product Inventory": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize Inventory Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "95a01b36-3768-4324-a5a4-05663e35249a",
+  "meta": {
+    "instanceId": "41e49f29cafdfc4ce0bd59d40e7d7bda8c2d2148c515095698e03d3f19dd2937"
+  },
+  "id": "nYqO8Kf2InvLoc01",
+  "tags": []
+}

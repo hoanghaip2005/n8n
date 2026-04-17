@@ -1,0 +1,10 @@
+supabase/.temp
+supabase/.cache
+
+.DS_Store
+
+.env
+.env.*
+!.env.example
+
+.supabase-home/

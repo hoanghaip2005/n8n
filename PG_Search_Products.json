@@ -1,0 +1,187 @@
+{
+  "name": "PG_Search_Products",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "product_query"
+            },
+            {
+              "name": "max_results",
+              "type": "number"
+            },
+            {
+              "name": "exclude_product_ids_json"
+            },
+            {
+              "name": "exclude_website_urls_json"
+            }
+          ]
+        }
+      },
+      "id": "a7ddcab0-9d57-4e52-9a44-6495273e4478",
+      "typeVersion": 1.1,
+      "name": "Execute Sub-workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "position": [
+        240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3e959d85-4b24-415f-a214-cf2224d3fcf1",
+              "name": "product_query",
+              "value": "={{ String($json.product_query || '').trim() }}",
+              "type": "string"
+            },
+            {
+              "id": "1db3ef65-7ca0-4b7a-9a67-5ee513cb584c",
+              "name": "max_results",
+              "value": "={{ Math.max(1, Math.min(Number($json.max_results || 5), 10)) }}",
+              "type": "number"
+            },
+            {
+              "id": "c5f96a9e-2c2f-433f-9923-0b9a9cb48a79",
+              "name": "exclude_product_ids_json",
+              "value": "={{ String($json.exclude_product_ids_json || '[]').trim() || '[]' }}",
+              "type": "string"
+            },
+            {
+              "id": "cb554b5b-f457-40b2-acd2-5a820a973aa0",
+              "name": "exclude_website_urls_json",
+              "value": "={{ String($json.exclude_website_urls_json || '[]').trim() || '[]' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8f7bf287-6892-458c-b08d-d5da8ec895a3",
+      "name": "Edit Fields Normalize Search Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        480,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "91b2cc79-8771-4287-92bd-8c89c93d1467",
+              "leftValue": "={{ !!String($json.product_query || '').trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "cf16c83c-e770-4925-890b-e098dc4ee0b9",
+      "name": "If Has Product Query",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        736,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  false as ok,\n  'PRODUCT_QUERY_MISSING'::text as error_code,\n  'Chua co product_query de tim san pham trong PostgreSQL'::text as message,\n  $1::text as product_query,\n  0::int as total,\n  '[]'::jsonb as items;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Edit Fields Normalize Search Input').first().json.product_query || ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        992,
+        448
+      ],
+      "id": "8046d0cd-99d2-4692-8d5d-f1886dfbdd9e",
+      "name": "PG Return Missing Query Result"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with normalized as (\n  select\n    trim(coalesce($1::text, '')) as product_query,\n    greatest(1, least(coalesce($2::integer, 5), 10)) as max_results,\n    coalesce(\n      (\n        select array_agg(value::bigint)\n        from jsonb_array_elements_text(\n          case\n            when coalesce(trim($3::text), '') = '' then '[]'::jsonb\n            else $3::jsonb\n          end\n        ) as ids(value)\n      ),\n      '{}'::bigint[]\n    ) as exclude_product_ids,\n    coalesce(\n      (\n        select array_agg(value::text)\n        from jsonb_array_elements_text(\n          case\n            when coalesce(trim($4::text), '') = '' then '[]'::jsonb\n            else $4::jsonb\n          end\n        ) as urls(value)\n      ),\n      '{}'::text[]\n    ) as exclude_website_urls\n),\nresult as (\n  select *\n  from public.search_product_catalog(\n    (select product_query from normalized),\n    (select max_results from normalized),\n    (select exclude_product_ids from normalized),\n    (select exclude_website_urls from normalized)\n  )\n)\nselect\n  true as ok,\n  ''::text as error_code,\n  case\n    when count(*)::int > 0 then ''\n    else 'Khong tim thay san pham phu hop trong catalog PostgreSQL'\n  end as message,\n  (select product_query from normalized) as product_query,\n  count(*)::int as total,\n  coalesce(\n    jsonb_agg(\n      jsonb_build_object(\n        'product_id', product_id,\n        'title', title,\n        'image_url', image_url,\n        'website_url', website_url,\n        'status', status,\n        'brand', brand,\n        'category', category,\n        'size', size,\n        'search_score', search_score,\n        'match_type', match_type\n      )\n      order by search_score desc, title asc\n    ),\n    '[]'::jsonb\n  ) as items\nfrom result;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.product_query || '',\n  Number($json.max_results || 5),\n  $json.exclude_product_ids_json || '[]',\n  $json.exclude_website_urls_json || '[]'\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        992,
+        224
+      ],
+      "id": "1c014bab-0ea1-4f14-8fd1-f1be0bb4bc7f",
+      "name": "PG Search Product Catalog"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Execute Sub-workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields Normalize Search Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields Normalize Search Input": {
+      "main": [
+        [
+          {
+            "node": "If Has Product Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Product Query": {
+      "main": [
+        [
+          {
+            "node": "PG Search Product Catalog",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG Return Missing Query Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

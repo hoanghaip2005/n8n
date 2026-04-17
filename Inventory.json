@@ -1,0 +1,487 @@
+[
+    {
+        "code": 1,
+        "paginator": {
+            "next": {
+                "id": 39110480
+            }
+        },
+        "data": [
+            {
+                "productId": 39110484,
+                "barcode": "2000214269123",
+                "name": "VH01 - Giày Chạy Địa Hình Nam Altra Timp 5 - Blue - 42.5 Lệch size L 42 R 42.5",
+                "prices": {
+                    "price": 0,
+                    "import": 0,
+                    "wholesale": 0,
+                    "avgCost": 0
+                },
+                "inventory": {
+                    "remain": 2,
+                    "shipping": 0,
+                    "damaged": 0,
+                    "holding": 0,
+                    "transfering": 0,
+                    "available": 2,
+                    "warranty": {
+                        "remain": 0,
+                        "holding": 0
+                    },
+                    "depots": [
+                        {
+                            "id": 27369,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 82686,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121851,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121858,
+                            "remain": 2,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 2,
+                            "warranty": []
+                        },
+                        {
+                            "id": 131439,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 147818,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 155407,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        }
+                    ]
+                }
+            },
+            {
+                "productId": 39110483,
+                "barcode": "848869022180",
+                "name": "Kính Chạy Bộ Tifosi Vogel SL - Blackout",
+                "prices": {
+                    "price": 1250000,
+                    "import": 637200,
+                    "wholesale": 0,
+                    "avgCost": 637200
+                },
+                "inventory": {
+                    "remain": 5,
+                    "shipping": 0,
+                    "damaged": 0,
+                    "holding": 0,
+                    "transfering": 0,
+                    "available": 5,
+                    "warranty": {
+                        "remain": 0,
+                        "holding": 0
+                    },
+                    "depots": [
+                        {
+                            "id": 27369,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 82686,
+                            "remain": 2,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 2,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121851,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121858,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 131439,
+                            "remain": 2,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 2,
+                            "warranty": []
+                        },
+                        {
+                            "id": 147818,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 155407,
+                            "remain": 1,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 1,
+                            "warranty": []
+                        }
+                    ]
+                }
+            },
+            {
+                "productId": 39110482,
+                "barcode": "848869031328",
+                "name": "Kính Chạy Bộ Tifosi Sanctum SL - Midnight Vapor",
+                "prices": {
+                    "price": 999000,
+                    "import": 509760,
+                    "wholesale": 0,
+                    "avgCost": 509760
+                },
+                "inventory": {
+                    "remain": 9,
+                    "shipping": 0,
+                    "damaged": 0,
+                    "holding": 0,
+                    "transfering": 0,
+                    "available": 9,
+                    "warranty": {
+                        "remain": 0,
+                        "holding": 0
+                    },
+                    "depots": [
+                        {
+                            "id": 27369,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 82686,
+                            "remain": 2,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 2,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121851,
+                            "remain": 1,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 1,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121858,
+                            "remain": 4,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 4,
+                            "warranty": []
+                        },
+                        {
+                            "id": 131439,
+                            "remain": 1,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 1,
+                            "warranty": []
+                        },
+                        {
+                            "id": 147818,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 155407,
+                            "remain": 1,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 1,
+                            "warranty": []
+                        }
+                    ]
+                }
+            },
+            {
+                "productId": 39110481,
+                "barcode": "848869030697",
+                "name": "Kính Chạy Bộ Tifosi Sanctum SL - Blackout",
+                "prices": {
+                    "price": 999000,
+                    "import": 509760,
+                    "wholesale": 0,
+                    "avgCost": 509760
+                },
+                "inventory": {
+                    "remain": 10,
+                    "shipping": 0,
+                    "damaged": 0,
+                    "holding": 0,
+                    "transfering": 0,
+                    "available": 10,
+                    "warranty": {
+                        "remain": 0,
+                        "holding": 0
+                    },
+                    "depots": [
+                        {
+                            "id": 27369,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 82686,
+                            "remain": 2,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 2,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121851,
+                            "remain": 1,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 1,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121858,
+                            "remain": 4,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 4,
+                            "warranty": []
+                        },
+                        {
+                            "id": 131439,
+                            "remain": 2,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 2,
+                            "warranty": []
+                        },
+                        {
+                            "id": 147818,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 155407,
+                            "remain": 1,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 1,
+                            "warranty": []
+                        }
+                    ]
+                }
+            },
+            {
+                "productId": 39110480,
+                "barcode": "848869031359",
+                "name": "Kính Chạy Bộ Tifosi Sanctum SL - Crystal Clear",
+                "prices": {
+                    "price": 999000,
+                    "import": 509760,
+                    "wholesale": 0,
+                    "avgCost": 509760
+                },
+                "inventory": {
+                    "remain": 10,
+                    "shipping": 0,
+                    "damaged": 0,
+                    "holding": 0,
+                    "transfering": 0,
+                    "available": 10,
+                    "warranty": {
+                        "remain": 0,
+                        "holding": 0
+                    },
+                    "depots": [
+                        {
+                            "id": 27369,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 82686,
+                            "remain": 2,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 2,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121851,
+                            "remain": 1,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 1,
+                            "warranty": []
+                        },
+                        {
+                            "id": 121858,
+                            "remain": 4,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 4,
+                            "warranty": []
+                        },
+                        {
+                            "id": 131439,
+                            "remain": 2,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 2,
+                            "warranty": []
+                        },
+                        {
+                            "id": 147818,
+                            "remain": 0,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 0,
+                            "warranty": []
+                        },
+                        {
+                            "id": 155407,
+                            "remain": 1,
+                            "shipping": 0,
+                            "damaged": 0,
+                            "holding": 0,
+                            "transfering": 0,
+                            "available": 1,
+                            "warranty": []
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+]

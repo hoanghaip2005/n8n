@@ -1,0 +1,3361 @@
+{
+  "name": "Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "httpMethod": [
+          "POST",
+          "GET"
+        ],
+        "path": "callbackfacebook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1824,
+        -544
+      ],
+      "id": "54c224cb-4667-4340-b5b4-edfb80f86e3e",
+      "name": "Webhook",
+      "webhookId": "b08d578c-a56b-4523-b790-ae7cb06d9e1e"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.agent_prompt }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "Bạn là một trợ lý AI chuyên nghiệp trong lĩnh vực bán quần áo. Khi phù hợp, hãy xưng hô \"em chào anh/chị\" và giới thiệu bạn là \"trợ lý tư vấn Activ\".\n\n🎯 Nhiệm vụ của bạn:\n- Chỉ giới thiệu các sản phẩm có trong phần Tools, không được gợi ý sản phẩm bên ngoài.\n- Có thể dựa vào sheet kịch bản để phản hồi theo đúng bối cảnh nếu trong sheet đã có tình huống phù hợp.\n- Giao tiếp tự nhiên, ngắn gọn, lịch sự và khéo léo định hướng khách đến việc mua hàng.\n- Nếu khách hỏi về sản phẩm nào thì chỉ trả lời đúng sản phẩm đó. Hỏi quần thì trả lời về quần, hỏi áo thì trả lời về áo. Chỉ gợi ý thêm sản phẩm tương tự khi thật sự liên quan.\n- Nếu khách yêu cầu xem ảnh, hình, mẫu, ảnh sản phẩm, ảnh thật hoặc catalogue, bắt buộc điền mảng product với 1-3 sản phẩm và mỗi sản phẩm phải có field image là URL ảnh công khai, không được để product rỗng.\n- Khách hỏi bằng tiếng Việt thì trả lời bằng tiếng Việt, khách hỏi bằng tiếng Anh thì trả lời bằng tiếng Anh.\n- Không gửi lại hình ảnh sản phẩm nào đã được chia sẻ trước đó.\n- Trường image phải lấy đúng từ trường \"Link ảnh sản phẩm\" của kết quả tool. Không được dùng \"Link trên website\" để điền vào image.\n- Nếu tool có trường \"Link trên website\", hãy điền vào field website_url trong từng item product để workflow có thể gắn link mở trang chi tiết sản phẩm.\n- Mỗi item trong product phải là 1 biến thể cụ thể, không gộp XS/S/M/L. Nếu khách chưa chọn size, chọn 1 size phổ biến nhất để trả về kèm ảnh.\n\n## Quy tắc khai thác nhu cầu:\n- Hỏi ngắn gọn về sở thích, phong cách thời trang và độ tuổi để gợi ý sản phẩm phù hợp với gu của khách.\n- Nếu phù hợp, có thể hỏi thêm chiều cao và cân nặng để tư vấn size sát hơn.\n- Sau khoảng 5-10 tin nhắn, nếu chưa có, hãy lịch sự xin họ tên đầy đủ, số điện thoại và địa chỉ nhận hàng.\n- Nếu các thông tin này đã có trong lịch sử chat, chỉ cần xác nhận lại, không hỏi lặp lại.\n\n## Quy tắc dùng tool:\n- Chỉ dùng dữ liệu từ Tools để tư vấn sản phẩm, kiểm tra tồn kho hoặc tham chiếu kịch bản. Không tự bịa sản phẩm hay tồn kho.\n- Khi khách hỏi \"còn hàng không\", \"còn size không\", \"hết hàng chưa\", \"còn bao nhiêu\" hoặc bất kỳ câu hỏi liên quan tồn kho, bắt buộc dùng tool kiểm tra tồn kho.\n- Đọc kết quả trả về:\n  + remain: tổng tồn kho\n  + available: số lượng có thể bán\n  + shipping: đang giao hàng\n- Nếu available > 0, trả lời theo hướng sản phẩm hiện còn hàng.\n- Nếu available = 0, trả lời theo hướng sản phẩm hiện đã hết hàng.\n- Không được tự đoán tồn kho.\n\n## Quy tắc đặt hàng:\n- Khi khách muốn đặt hàng, cần thu thập đủ: họ tên, số điện thoại, địa chỉ nhận hàng, sản phẩm cụ thể, size hoặc biến thể cụ thể nếu có, và số lượng.\n- Nếu thiếu thông tin thì hỏi tiếp một cách lịch sự, ví dụ: \"Dạ anh/chị cho em xin số điện thoại và địa chỉ nhận hàng ạ\".\n- Khi đã đủ thông tin, luôn xác nhận lại 1 lần bằng tin nhắn ngắn gọn, ví dụ: \"Dạ em xác nhận đơn: [tên sản phẩm] [size/biến thể] x[số lượng], giao đến [địa chỉ], SĐT [xxx]. Anh/chị xác nhận giúp em ạ?\".\n- Chỉ khi khách xác nhận rõ ràng kiểu như \"ok em chốt đơn nhé\", \"chị xác nhận lấy mẫu này\", \"đặt cho anh 1 cái\", \"em lên đơn đi\", \"anh/chị xác nhận\" thì mới coi là chốt đơn.\n- Nếu khách chưa xác nhận rõ ràng, chỉ tiếp tục tư vấn hoặc xác nhận lại, không được nói là đã tạo ticket.\n\n## Quy tắc ticket nội bộ:\n- Trong workflow này, AI không tự tạo đơn hàng thật và không tự gọi tool tạo đơn hoặc gửi Zalo.\n- Workflow bên ngoài agent sẽ tự tạo ticket ảo và tự gửi sang group Zalo dựa trên structured output của bạn.\n- Vì vậy, khi khách đã xác nhận mua và đã có đủ thông tin, field message phải là một câu tự nhiên theo hướng: shop đã ghi nhận xác nhận và đã chuyển cho bộ phận xử lý nội bộ.\n- Hãy điền đầy đủ các field fullname, phone, address, products_interested, note và mảng product để workflow tạo ticket chính xác.\n\n## Quy tắc output:\n- Luôn trả về đúng 1 JSON object, không kèm markdown, không thêm giải thích ngoài JSON.\n- products_interested là chuỗi ngắn gọn mô tả sản phẩm khách đang quan tâm.\n- need_summary là tóm tắt ngắn gọn nhu cầu hiện tại của khách.\n- customer_stage và lead_status phải phản ánh đúng trạng thái hiện tại của khách trong funnel.\n- intent_score là số từ 0 đến 100.\n- message là tin nhắn ngắn gọn, tự nhiên để gửi lại cho khách hàng.\n- product là mảng các biến thể cụ thể.\n- Nếu chưa có dữ liệu thì dùng chuỗi rỗng hoặc mảng rỗng, không tự bịa thông tin.\n\nTrả về kết quả theo định dạng JSON sau:\n{\n  \"fullname\": \"Họ tên khách hàng\",\n  \"phone\": \"Số điện thoại\",\n  \"address\": \"Địa chỉ nhận hàng\",\n  \"age\": \"Độ tuổi nếu có thể suy ra\",\n  \"height\": \"Chiều cao\",\n  \"weight\": \"Cân nặng\",\n  \"products_interested\": \"Các sản phẩm khách quan tâm\",\n  \"need_summary\": \"Tóm tắt nhu cầu hiện tại của khách\",\n  \"customer_stage\": \"new|discovering|quoted|qualified|waiting_phone|handoff_ready|cold\",\n  \"lead_status\": \"unknown|interested|qualified|not_interested|inactive\",\n  \"intent_score\": 0,\n  \"ask_for_phone_now\": false,\n  \"has_clear_need\": false,\n  \"need_more_info_from_customer\": false,\n  \"note\": \"Ghi chú đơn hàng hoặc yêu cầu thêm nếu có\",\n  \"message\": \"Tin nhắn phản hồi gửi cho khách\",\n  \"product\": [\n    {\n      \"title\": \"Tên sản phẩm\",\n      \"variant\": \"Biến thể cụ thể nếu có\",\n      \"size\": \"Size cụ thể\",\n      \"quantity\": 1,\n      \"price\": \"Giá sản phẩm\",\n      \"image\": \"Đường dẫn ảnh sản phẩm\",\n      \"website_url\": \"Link chi tiết sản phẩm trên website\"\n    }\n  ]\n}\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        2032,
+        80
+      ],
+      "id": "f961bef7-0d87-4c50-88ee-829f020b1460",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v25.0/me/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"recipient\": {\n    \"id\": \"{{ String($('Set Buffered Conversation Context').first().json.sender_id).trim() }}\"\n  },\n  \"messaging_type\": \"RESPONSE\",\n  \"message\": {\n    \"text\": {{ JSON.stringify($json.output.message) }}\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2464,
+        -176
+      ],
+      "id": "aec166ae-8ef1-411f-a7ce-da6f80b033cf",
+      "name": "HTTP Request",
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "daIRt8RpKc4mvqah",
+          "name": "Facebook Graph account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-5-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        752,
+        832
+      ],
+      "id": "bbc1f03b-5edc-446c-be37-d64d5190cf6b",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "R4u2zDSLYQvqpat3",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ ($json.channel || 'chat') + ':' + ($json.page_id || $json.group_id || $json.oa_id || 'main') + ':' + ($json.sender_id || $json.uid || $json.user_id || '') }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        1296,
+        304
+      ],
+      "id": "c6742681-db77-461a-9cee-b09d5effab62",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8",
+          "mode": "list",
+          "cachedResultName": "ChatbotActivSheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2069454533,
+          "mode": "list",
+          "cachedResultName": "Product",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8/edit#gid=2069454533"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        3344,
+        -624
+      ],
+      "id": "978ec11b-a2f7-4e81-a404-fdabaaa3c948",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "SfviIGa7NTZWTs4f",
+          "name": "Google Sheets account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        3744,
+        -624
+      ],
+      "id": "751f33df-9d71-42ed-9149-271c6ae2f5d5",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "fieldsToSummarize": {
+          "values": [
+            {
+              "aggregation": "concatenate",
+              "field": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.summarize",
+      "typeVersion": 1.1,
+      "position": [
+        3952,
+        -624
+      ],
+      "id": "59d3014e-4ce3-4e88-9b80-4c42cc28218b",
+      "name": "Summarize"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "product",
+          "mode": "list",
+          "cachedResultName": "product"
+        },
+        "options": {
+          "pineconeNamespace": "product_list"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        4144,
+        -624
+      ],
+      "id": "3faa2c6b-e4fb-4ada-94f7-eb0a16b22d5e",
+      "name": "Pinecone Vector Store",
+      "credentials": {
+        "pineconeApi": {
+          "id": "kMm68ivurHPeQn7z",
+          "name": "PineconeApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "textSplittingMode": "custom",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        4112,
+        -240
+      ],
+      "id": "e3fd9613-ad1b-4500-af97-2f1ba34c13df",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {
+        "chunkSize": 5000,
+        "chunkOverlap": 500,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        4112,
+        -80
+      ],
+      "id": "1bc13dba-3c24-440e-b649-eb2323e565e4",
+      "name": "Recursive Character Text Splitter"
+    },
+    {
+      "parameters": {
+        "options": {
+          "dimensions": 512
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        4144,
+        -432
+      ],
+      "id": "f510baaf-daab-42bf-a317-c686877fb21c",
+      "name": "Embeddings OpenAI",
+      "credentials": {
+        "openAiApi": {
+          "id": "R4u2zDSLYQvqpat3",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "use this to get infomation product",
+        "pineconeIndex": {
+          "__rl": true,
+          "value": "product",
+          "mode": "list",
+          "cachedResultName": "product"
+        },
+        "includeDocumentMetadata": false,
+        "options": {
+          "pineconeNamespace": "product_list"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+      "typeVersion": 1.3,
+      "position": [
+        1264,
+        448
+      ],
+      "id": "f7b2cb60-6e53-48d6-979c-b315abf2ff4f",
+      "name": "Pinecone Vector Store1",
+      "credentials": {
+        "pineconeApi": {
+          "id": "kMm68ivurHPeQn7z",
+          "name": "PineconeApi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "dimensions": 512
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1264,
+        624
+      ],
+      "id": "5fbd0893-ea3e-4d85-8353-14bc6967b324",
+      "name": "Embeddings OpenAI1",
+      "credentials": {
+        "openAiApi": {
+          "id": "R4u2zDSLYQvqpat3",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"fullname\": \"Họ tên khách hàng\",\n  \"phone\": \"Số điện thoại\",\n  \"address\": \"Địa chỉ nhận hàng\",\n  \"age\": \"Độ tuổi (nếu có thể suy ra)\",\n  \"height\": \"Chiều cao\",\n  \"weight\": \"Cân nặng\",\n  \"products_interested\": \"Các sản phẩm khách quan tâm\",\n  \"need_summary\": \"Tóm tắt nhu cầu hiện tại của khách\",\n  \"customer_stage\": \"new|discovering|quoted|qualified|waiting_phone|handoff_ready|cold\",\n  \"lead_status\": \"unknown|interested|qualified|not_interested|inactive\",\n  \"intent_score\": 0,\n  \"ask_for_phone_now\": false,\n  \"has_clear_need\": false,\n  \"need_more_info_from_customer\": false,\n  \"note\": \"Ghi chú đơn hàng hoặc yêu cầu thêm nếu có\",\n  \"message\": \"Tin nhắn phản hồi gửi cho khách\",\n  \"product\": [\n    {\n      \"title\": \"Tên sản phẩm\",\n      \"variant\": \"Biến thể cụ thể nếu có\",\n      \"size\": \"Size cụ thể\",\n      \"quantity\": 1,\n      \"price\": \"Giá sản phẩm\",\n      \"image\": \"Đường dẫn ảnh sản phẩm\",\n      \"website_url\": \"Link chi tiết sản phẩm trên website\"\n    }\n  ]\n}",
+        "autoFix": true
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1680,
+        800
+      ],
+      "id": "28ea1e68-7e4b-46ce-85e6-fa143795de87",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": []
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3552,
+        -624
+      ],
+      "id": "84e757c9-eb24-48b3-ac83-d648d74f8333",
+      "name": "Build Docs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const webhook = $json.body ?? {};\nconst entries = Array.isArray(webhook.entry) ? webhook.entry : [];\nconst output = [];\n\nfor (const entry of entries) {\n  const pageId = String(entry.id ?? '').trim();\n  const entryTime = Number(entry.time ?? 0);\n  const messagingList = Array.isArray(entry.messaging) ? entry.messaging : [];\n\n  for (let index = 0; index < messagingList.length; index += 1) {\n    const messaging = messagingList[index] ?? {};\n    const senderId = String(messaging.sender?.id ?? '').trim();\n    const recipientId = String(messaging.recipient?.id ?? '').trim();\n\n    const hasRead = !!messaging.read;\n    const hasDelivery = !!messaging.delivery;\n    const hasReaction = !!messaging.reaction;\n    const hasPostback = !!messaging.postback;\n    const hasMessage = !!messaging.message && typeof messaging.message === 'object';\n\n    if (hasRead || hasDelivery || hasReaction || hasPostback) {\n      continue;\n    }\n\n    if (!hasMessage) {\n      continue;\n    }\n\n    const message = messaging.message;\n    const isEcho = Boolean(message.is_echo);\n\n    if (isEcho || (senderId && pageId && senderId === pageId)) {\n      continue;\n    }\n\n    const text = String(message.text ?? '').trim();\n    const attachments = Array.isArray(message.attachments) ? message.attachments : [];\n    const imageAttachments = attachments.filter((item) => item?.type === 'image');\n    const imageUrls = imageAttachments\n      .map((item) => String(item?.payload?.url ?? '').trim())\n      .filter(Boolean);\n\n    if (!text && imageUrls.length === 0) {\n      continue;\n    }\n\n    const eventTimestamp = Number(messaging.timestamp ?? 0);\n    const diff = entryTime && eventTimestamp ? entryTime - eventTimestamp : 0;\n    const fallbackMid = [pageId, senderId, eventTimestamp || Date.now(), index].join(':');\n    const mid = String(message.mid ?? fallbackMid).trim();\n\n    output.push({\n      json: {\n        channel: 'facebook',\n        event_type: 'message',\n        page_id: pageId,\n        sender_id: senderId,\n        recipient_id: recipientId,\n        source_message_id: mid,\n        message_text: text,\n        has_image_attachment: imageUrls.length > 0,\n        image_url: imageUrls[0] || '',\n        image_urls: imageUrls,\n        attachment_count: imageUrls.length,\n        raw_attachments: imageAttachments,\n        timeDiffms: diff,\n        isValid: !!senderId && !!recipientId,\n        event_timestamp_iso: eventTimestamp\n          ? new Date(eventTimestamp).toISOString()\n          : new Date().toISOString(),\n        raw_event: {\n          entry_id: pageId,\n          entry_time: entryTime,\n          messaging,\n        },\n      },\n    });\n  }\n}\n\nreturn output.length\n  ? output\n  : [{ json: { isValid: false, event_type: 'ignored', skip_reason: 'no_customer_message_events' } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1600,
+        -304
+      ],
+      "id": "7e2f48f1-1d89-4eca-8858-e68bbd62cdbc",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c861227b-007e-47ce-8b5e-aba35ce54375",
+              "leftValue": "={{ $json.isValid }}\n",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "05f1cdc8-0e92-4080-89d2-2f917f2c42b3",
+              "leftValue": "={{ $json.event_type ?? '' }}",
+              "rightValue": "message",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {
+          "ignoreCase": false
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1424,
+        -304
+      ],
+      "id": "00feaa4d-5eb6-4c4a-a98b-d1e82bb580e8",
+      "name": "If2"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8",
+          "mode": "list",
+          "cachedResultName": "ChatbotActivSheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Kịch bản",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        2592,
+        352
+      ],
+      "id": "5f1fd313-2396-49ed-9dc1-1779a16d52b6",
+      "name": "Get row(s) in sheet in Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "SfviIGa7NTZWTs4f",
+          "name": "Google Sheets account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "nhanh-auth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        928,
+        -880
+      ],
+      "id": "1e321285-1cee-4258-8961-b632f9f24a7f",
+      "name": "Webhook1",
+      "webhookId": "77667f07-9259-4d8e-9e85-a34d131c73c8"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://pos.open.nhanh.vn/v3.0/order/history",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "appId",
+              "value": "77078"
+            },
+            {
+              "name": "businessId",
+              "value": "30923"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "s4D4HeuENYVZ8j4e5ihraeyi926sDQE7aGZwptVZXAEjDYNEu4glaulJlI5jKEX2HbejcMjc5Qxde4GEHQ8O2ZrBuXoh86iLO59piZ0JJlzUkcOyDFCKa6YFwSuAzpzabcQ6u92fnDV82YGWHUL2fc4z7vdQAKsQXXnAZe04LIrNtZtjaelanpCWd1npBxa5qfo"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"filters\": {\n    \"orderIds\": [\n    733617920\n    ],\n    \"steps\": [\n  \n    ]\n  }\n}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        1152,
+        -864
+      ],
+      "id": "29f4b816-fcaa-4af3-aefa-5f2a8ba8da23",
+      "name": "HTTP Request5"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Dùng tool này chỉ khi khách hàng trên Facebook đã xác nhận chốt đơn và đã có đủ thông tin tối thiểu gồm: họ tên, số điện thoại, địa chỉ nhận hàng, sản phẩm và số lượng.\n\nNhiệm vụ của tool là gửi một ticket ảo vào group Zalo nội bộ để nhân viên xử lý tiếp, KHÔNG phải tạo đơn hàng thật.\n\nKhông dùng tool này khi:\n- khách mới hỏi giá, hỏi size, hỏi tồn kho\n- khách chưa xác nhận chốt đơn\n- còn thiếu họ tên, số điện thoại, địa chỉ, sản phẩm hoặc số lượng\n\nKhi gọi tool, hãy truyền một nội dung ticketMessage ngắn gọn nhưng đầy đủ, bao gồm:\n- mã ticket tạm\n- nguồn: Facebook\n- họ tên khách\n- số điện thoại\n- địa chỉ\n- sản phẩm và số lượng\n- ghi chú ngắn nếu có\n- câu hướng dẫn xác nhận theo mẫu: xac nhan <ma_ticket>\n\nSau khi gọi tool thành công, hãy trả lời lại khách Facebook rằng shop đã tạo ticket xử lý nội bộ và sẽ xác nhận tiếp sớm.\n",
+        "method": "POST",
+        "url": "https://openapi.zalo.me/v3.0/oa/group/message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $('Set Active Zalo Token').item.json.access_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"recipient\": {\n    \"group_id\": \"9eea7ebed9dd308369cc\"\n  },\n  \"message\": {\n    \"text\": {{ JSON.stringify($fromAI(\n      \"ticketMessage\",\n      \"Noi dung ticket ao gui vao group Zalo. Bat buoc co: ma ticket, ten khach, so dien thoai, dia chi, san pham, so luong, va dong huong dan 'xac nhan <ma_ticket>'.\",\n      \"string\"\n    )) }}\n  }\n}\n",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.4,
+      "position": [
+        2336,
+        624
+      ],
+      "id": "cdc14d25-acbc-49d9-9eee-4b61dc9f10db",
+      "name": "HTTP Request10"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "zalo_oa_tokens",
+          "mode": "list",
+          "cachedResultName": "zalo_oa_tokens"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "token_key",
+              "value": "oa_main"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -544,
+        368
+      ],
+      "id": "648d49c4-dae5-49cd-8bd0-2ef0c19bd6b6",
+      "name": "PG Get Zalo Token Cache",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "df423fe1-42f8-4f4d-aa07-0f27e0eb79c1",
+              "leftValue": "={{ !!$json.access_token && !!$json.expires_at && new Date($json.expires_at).getTime() > Date.now() + 10 * 60 * 1000 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -368,
+        352
+      ],
+      "id": "067a2689-4ee6-4cc0-ac48-670570fdc272",
+      "name": "If Zalo Token Still Valid"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://oauth.zaloapp.com/v4/oa/access_token",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "secret_key",
+              "value": "IMT6vc7Ix0nGSMPpKjIN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "refresh_token",
+              "value": "vtAs7PA9qHdeVx0GdutN6ULykn2GaTvsXHdRFh6_tbQvFSGHdApYMfC-zZosXCzls33tFQEyxNYb5VCTrQFgOEC7xnVZfybHpIVIEjccyZdC7SHHuRB7EV02q5dsYxOcX1odKwNeb2E0NeTmylkA2eDvh0ZmyAfOtrImAjRweId2QxnBnTgJARuhz6YFZyTlcXhn4EYJaHV3DuCUifMRORaqWpk8dQ5Ld0RCBRs7x2wQ2ijKYO7R8huut56pWiOen2dIJ_BIz2g8O-v1ylda4fmCoH2rXib5in2bJCAge4lxKCGGZTlwOBjCcsAIwPy1X5-bOAFTkIdHGOHLtTAfCV5maMJawV8szHtBVzA4o3d54DHXiQdiVSiVtW6uhUHZoIZ2PTMXncF41VqRrfxXMFispYRLbzPGGyDLCP2Vq1y"
+            },
+            {
+              "name": "app_id",
+              "value": "3368259548412892986"
+            },
+            {
+              "name": "grant_type",
+              "value": "refresh_token"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -672,
+        512
+      ],
+      "id": "14421047-c103-4967-8dcb-1fdd56d9d893",
+      "name": "Get Zalo OA Access Token"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.data ?? '{}';\nconst parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;\n\nconst expiresIn = Number(parsed.expires_in || 90000);\n\nreturn [\n  {\n    json: {\n      token_key: 'oa_main',\n      access_token: String(parsed.access_token || ''),\n      refresh_token: String(parsed.refresh_token || ''),\n      expires_at: new Date(Date.now() + (expiresIn - 600) * 1000).toISOString(),\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -496,
+        512
+      ],
+      "id": "26623e24-8115-4496-8b8a-5f1c15f36d4c",
+      "name": "Set Refreshed Zalo Token"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "zalo_oa_tokens",
+          "mode": "list",
+          "cachedResultName": "zalo_oa_tokens"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "token_key": "={{ $json.token_key }}",
+            "access_token": "={{ $json.access_token }}",
+            "refresh_token": "={{ $json.refresh_token }}",
+            "expires_at": "={{ $json.expires_at }}",
+            "created_at": "={{ $now }}\n",
+            "updated_at": "={{ $now }}",
+            "app_id": "3368259548412892986"
+          },
+          "matchingColumns": [
+            "token_key"
+          ],
+          "schema": [
+            {
+              "id": "token_key",
+              "displayName": "token_key",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "app_id",
+              "displayName": "app_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "oa_id",
+              "displayName": "oa_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "access_token",
+              "displayName": "access_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "refresh_token",
+              "displayName": "refresh_token",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "expires_at",
+              "displayName": "expires_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -304,
+        512
+      ],
+      "id": "ebf34c7c-3e1c-425d-a3d5-b4ab00de1d02",
+      "name": "PG Save Zalo Token",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c98e4d32-5562-41a8-921c-d4fae8e8c9a4",
+              "name": "token_key",
+              "value": "={{ $json.token_key }}",
+              "type": "string"
+            },
+            {
+              "id": "8f029e5a-9611-474e-bbfa-81e9cfd07e9b",
+              "name": "app_id",
+              "value": "={{ $json.app_id }}",
+              "type": "string"
+            },
+            {
+              "id": "06f5b472-d916-4416-88fe-80b74e6a192e",
+              "name": "access_token",
+              "value": "={{ $json.access_token }}",
+              "type": "string"
+            },
+            {
+              "id": "8bb53736-fef5-4cb7-870f-14723b1d32a9",
+              "name": "refresh_token",
+              "value": "={{ $json.refresh_token }}",
+              "type": "string"
+            },
+            {
+              "id": "4f0601c9-664f-4eb5-9785-e54e3267dc12",
+              "name": "expires_at",
+              "value": "={{ $json.expires_at }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -96,
+        336
+      ],
+      "id": "c9893b39-aebb-444c-a455-059d39b6d04d",
+      "name": "Set Active Zalo Token"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c98e4d32-5562-41a8-921c-d4fae8e8c9a4",
+              "name": "token_key",
+              "value": "={{ $json.token_key || 'oa_main' }}",
+              "type": "string"
+            },
+            {
+              "id": "8f029e5a-9611-474e-bbfa-81e9cfd07e9b",
+              "name": "app_id",
+              "value": "={{ $json.app_id || $('PG Get Zalo Token Cache').item.json.app_id || '' }}\n",
+              "type": "string"
+            },
+            {
+              "id": "06f5b472-d916-4416-88fe-80b74e6a192e",
+              "name": "access_token",
+              "value": "={{ $json.zalo_access_token || $json.access_token || '' }}\n",
+              "type": "string"
+            },
+            {
+              "id": "8bb53736-fef5-4cb7-870f-14723b1d32a9",
+              "name": "refresh_token",
+              "value": "={{ $json.zalo_refresh_token || $json.refresh_token || '' }}\n",
+              "type": "string"
+            },
+            {
+              "id": "4f0601c9-664f-4eb5-9785-e54e3267dc12",
+              "name": "expires_at",
+              "value": "={{ $json.zalo_expires_at || $json.expires_at || '' }}\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -128,
+        512
+      ],
+      "id": "72b8dd39-e350-48a0-876d-6689bb942d11",
+      "name": "Set Active Zalo Token If False"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        2000,
+        976
+      ],
+      "id": "9a51542c-e5e7-419d-89a6-2f5c61790a74",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8",
+          "mode": "list",
+          "cachedResultName": "ChatbotActivSheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2069454533,
+          "mode": "list",
+          "cachedResultName": "Product",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/140CCsH78LXSNZJ2zG1M82Xzzic6n-zrHy-lJCs4dhN8/edit#gid=2069454533"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        992,
+        1392
+      ],
+      "id": "9b2bcb3c-0947-4f24-a80e-99fdc60c9e63",
+      "name": "Get row(s) in sheet2",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "SfviIGa7NTZWTs4f",
+          "name": "Google Sheets account 5"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d32402d7-5d3c-4e36-9ad2-abbf1f322240",
+              "name": "product_id",
+              "value": "={{ $json[\"ID sản phẩm\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "996b9d46-383e-4d79-8c3f-484880bdf2ec",
+              "name": "title",
+              "value": "={{ $json[\"Tên sản phẩm\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "aeaffb3c-b34b-43b2-a084-a5b3fe141cd1",
+              "name": "image_url",
+              "value": "={{ $json[\"Link ảnh sản phẩm\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "0cd5ae74-70e9-4eae-a291-e3eafd95216e",
+              "name": "status",
+              "value": "={{ $json[\"Trạng thái\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "0e9291f4-5d8a-48e5-a785-ba6451d3722c",
+              "name": "category",
+              "value": "={{ $json[\"Danh mục\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "d233b387-2b8c-407c-a4dc-2e78f38a7193",
+              "name": "brand",
+              "value": "={{ $json[\"Thương hiệu\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "96b30337-23a7-494c-a363-92232e129ec7",
+              "name": "website_url",
+              "value": "={{ $json[\"Link trên website\"] }}",
+              "type": "string"
+            },
+            {
+              "id": "059192e1-1df4-42a3-98ad-8a1273401358",
+              "name": "size",
+              "value": "={{ $json[\"Kích Thước\"] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        1392
+      ],
+      "id": "eb6541d1-0991-444a-af39-f83da76b4e8e",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "2b0a31e9-d23f-4ab2-aa1e-4c214b7244ac",
+              "leftValue": "={{ !!$json.image_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1408,
+        1392
+      ],
+      "id": "d522ef81-c4c6-45cb-9be9-647f13627884",
+      "name": "If3"
+    },
+    {
+      "parameters": {
+        "batchSize": 10,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        2416,
+        976
+      ],
+      "id": "1f78165f-299b-43b3-89e0-6498053ecb5b",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "product_images",
+          "mode": "list",
+          "cachedResultName": "product_images"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "is_active": true,
+            "product_id": "={{ $json.product_id }}",
+            "title": "={{ $json.title }}",
+            "image_url": "={{ $json.image_url }}",
+            "website_url": "={{ $json.website_url }}",
+            "status": "={{ $json.status }}",
+            "brand": "={{ $json.brand }}",
+            "category": "={{ $json.category }}",
+            "size": "={{ $json.size }}",
+            "updated_at": "={{ $now }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "product_id",
+              "displayName": "product_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "image_url",
+              "displayName": "image_url",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "website_url",
+              "displayName": "website_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "brand",
+              "displayName": "brand",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "size",
+              "displayName": "size",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "is_active",
+              "displayName": "is_active",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1728,
+        1376
+      ],
+      "id": "06c05e6e-9f58-4779-aa70-b63f07933b44",
+      "name": "Insert rows in a table2",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ticketboxhdpe.io.vn/embed-image-url",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"image_url\": \"{{ $json.image_url }}\",\n  \"normalize\": true\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2592,
+        1136
+      ],
+      "id": "f43aa3fd-f715-4d60-bac6-4378cf38a9fd",
+      "name": "HTTP Embed Image URL",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "55ce338a-7558-4947-b2b5-fc5f439dd1a0",
+              "leftValue": "={{ Array.isArray($json.embedding) && $json.embedding.length === 512 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2800,
+        1136
+      ],
+      "id": "21cba359-77c7-4ec6-8dcd-c212dc08fbc4",
+      "name": "If4"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cb293ee9-c29c-41d8-b802-07b7bdd83a9f",
+              "name": "product_id",
+              "value": "={{ $('PG Get Product Images').item.json.product_id }}",
+              "type": "string"
+            },
+            {
+              "id": "fb7d13d2-6b70-4edd-bdba-c6eed3c9ebf5",
+              "name": "image_url",
+              "value": "={{ $('PG Get Product Images').item.json.image_url }}",
+              "type": "string"
+            },
+            {
+              "id": "756bcbf0-e17a-4db2-9147-0fe6fbf41c00",
+              "name": "model_name",
+              "value": "sentence-transformers/clip-ViT-B-32",
+              "type": "string"
+            },
+            {
+              "id": "572db772-3913-4d81-be9c-c296eecce65b",
+              "name": "embedding_vector",
+              "value": "={{ '[' + $json.embedding.join(',') + ']' }}",
+              "type": "string"
+            },
+            {
+              "id": "b8dcaab9-e0da-4c36-a367-a27f50b6d51c",
+              "name": "metadata",
+              "value": "={{ JSON.stringify({\n  title: $('PG Get Product Images').item.json.title || '',\n  website_url: $('PG Get Product Images').item.json.website_url || '',\n  status: $('PG Get Product Images').item.json.status || '',\n  brand: $('PG Get Product Images').item.json.brand || '',\n  category: $('PG Get Product Images').item.json.category || '',\n  size: $('PG Get Product Images').item.json.size || ''\n}) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        3136,
+        1120
+      ],
+      "id": "dfb7a7c9-6dbb-48b9-9edf-4fe4830f6d3f",
+      "name": "Set Vector Payload"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  product_id,\n  image_url,\n  title,\n  website_url,\n  status,\n  brand,\n  category,\n  size\nfrom public.product_images\nwhere is_active = true\n  and image_url is not null\n  and image_url <> '';",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2208,
+        976
+      ],
+      "id": "67e90d48-778a-4a5a-b884-77113296c76d",
+      "name": "PG Get Product Images",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.product_image_vectors (\n  product_id,\n  image_url,\n  model_name,\n  embedding,\n  metadata,\n  updated_at\n)\nvalues (\n  $1,\n  $2,\n  $3,\n  $4::vector,\n  $5::jsonb,\n  now()\n)\non conflict (product_id, image_url) do update\nset\n  model_name = excluded.model_name,\n  embedding = excluded.embedding,\n  metadata = excluded.metadata,\n  updated_at = now();\n",
+        "options": {
+          "queryReplacement": "={{ [\n  Number($json.product_id),\n  $json.image_url,\n  $json.model_name,\n  $json.embedding_vector,\n  $json.metadata\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3344,
+        1120
+      ],
+      "id": "4340f306-f662-4189-92d8-b0d3c46729f9",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cd9d0e06-71f2-463a-b7aa-dd8f1bc7d2e5",
+              "leftValue": "={{ !!$json.has_image_attachment && !!$json.image_url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        176,
+        -384
+      ],
+      "id": "2b1afa34-ed2e-4e71-9905-8bf56d5fa05c",
+      "name": "If Has Image Attachment"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "08e0cce7-0a72-4e91-8903-00b31590196b",
+              "name": "sender_id",
+              "value": "={{ $json.sender_id }}",
+              "type": "string"
+            },
+            {
+              "id": "4888ce6a-0f20-4617-8670-9a51f216db15",
+              "name": "customer_image_url",
+              "value": "={{ $json.image_url }}",
+              "type": "string"
+            },
+            {
+              "id": "4e6e3a99-7959-45cd-961c-071d1521f265",
+              "name": "customer_message",
+              "value": "={{ $json.message_text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        352,
+        -560
+      ],
+      "id": "0bb334b5-18b4-4080-8ec2-830623787ccd",
+      "name": "Set Customer Image Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://ticketboxhdpe.io.vn/embed-image-url",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"image_url\": \"{{ $json.customer_image_url }}\",\n  \"normalize\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        512,
+        -560
+      ],
+      "id": "8826ce79-77bf-4b8d-a88a-dbe23c060968",
+      "name": "HTTP Embed Customer Image",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "01846af1-f5f2-4715-9832-7336ff3711b2",
+              "leftValue": "={{ Array.isArray($json.embedding) && $json.dimension === 512 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        688,
+        -560
+      ],
+      "id": "fb9b8871-e6db-45ab-8a03-ccd8b78186a0",
+      "name": "If Customer Embedding Valid"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eddc4456-5c91-4a56-b225-d10d598282ec",
+              "name": "sender_id",
+              "value": "={{ $('Set Customer Image Payload').item.json.sender_id }}",
+              "type": "string"
+            },
+            {
+              "id": "5d9bbafc-c3f1-4662-98df-00dfb1092e62",
+              "name": "customer_image_url",
+              "value": "={{ $('Set Customer Image Payload').item.json.customer_image_url }}",
+              "type": "string"
+            },
+            {
+              "id": "ccb0ee40-c6ab-4aab-a30b-46397d56bf1d",
+              "name": "customer_message",
+              "value": "={{ $('Set Customer Image Payload').item.json.customer_message }}",
+              "type": "string"
+            },
+            {
+              "id": "04a0ffa7-7f12-47b6-a18c-51a039fdbfaf",
+              "name": "query_vector",
+              "value": "={{ '[' + $json.embedding.join(',') + ']' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        592,
+        -352
+      ],
+      "id": "ab28a8d6-2238-46d4-801b-a7da658b1f88",
+      "name": "Set Customer Query Vector"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with ranked as (\n  select\n    product_id,\n    image_url,\n    metadata,\n    1 - (embedding <=> $1::vector) as vector_similarity\n  from public.product_image_vectors\n  order by embedding <=> $1::vector\n  limit 5\n)\nselect\n  $2::text as sender_id,\n  $3::text as customer_image_url,\n  $4::text as customer_message,\n  coalesce(\n    json_agg(\n      json_build_object(\n        'product_id', product_id,\n        'image_url', image_url,\n        'metadata', metadata,\n        'vector_similarity', round(vector_similarity::numeric, 6)\n      )\n      order by vector_similarity desc\n    ),\n    '[]'::json\n  ) as candidates\nfrom ranked;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.query_vector,\n  $json.sender_id,\n  $json.customer_image_url,\n  $json.customer_message || ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        768,
+        -352
+      ],
+      "id": "490a7e71-c53d-493f-adc7-a769a6f85338",
+      "name": "PG Search Top K Products",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select *\nfrom public.merge_facebook_conversation_event(\n  $1::text,\n  $2::text,\n  $3::text,\n  $4::text,\n  $5::text,\n  $6::jsonb,\n  $7::timestamptz,\n  $8::jsonb,\n  $9::integer\n);",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.channel || \"facebook\",\n  $json.page_id,\n  $json.sender_id,\n  $json.source_message_id,\n  $json.message_text || \"\",\n  JSON.stringify($json.image_urls || []),\n  $json.event_timestamp_iso,\n  JSON.stringify($json.raw_event || {}),\n  5\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1216,
+        -304
+      ],
+      "id": "bf0720aa-1a70-4918-b69f-0bda57ea058f",
+      "name": "PG Merge Facebook Conversation Buffer",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "19f96ebf-4ee6-4d3c-bd8b-06089f000c91",
+              "leftValue": "={{ !$json.is_duplicate }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1008,
+        -304
+      ],
+      "id": "725baa82-2495-478e-817b-6f6be9d0efec",
+      "name": "If Facebook Buffer Updated"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  channel,\n  page_id,\n  sender_id,\n  merged_text,\n  image_urls,\n  first_event_at,\n  last_event_at,\n  release_at,\n  fragment_count,\n  buffer_version,\n  status,\n  last_mid,\n  (buffer_version = $4::integer and status = 'buffering') as is_latest\nfrom public.fb_conversation_buffer\nwhere channel = $1::text\n  and page_id = $2::text\n  and sender_id = $3::text\nlimit 1;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.channel,\n  $json.page_id,\n  $json.sender_id,\n  Number($json.buffer_version || 0)\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -608,
+        -528
+      ],
+      "id": "3d9344a7-8c83-4c7f-a1be-97c62ee4e01c",
+      "name": "PG Load Facebook Conversation Buffer",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 10
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -816,
+        -528
+      ],
+      "id": "df3606a6-b277-486c-ae3f-ffe654f7a0e8",
+      "name": "Wait Conversation Window",
+      "webhookId": "520526ab-3283-4387-8aa9-08cbf297af8b"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c01f8440-87f8-4324-b5ff-3727fc6609a2",
+              "leftValue": "={{ !!$json.is_latest }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -400,
+        -528
+      ],
+      "id": "5051f415-53e6-4ccc-817f-87e61f27d32b",
+      "name": "If Latest Conversation Buffer"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parseArray = (value) => {\n  if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean);\n  if (typeof value === 'string') {\n    try {\n      const parsed = JSON.parse(value);\n      if (Array.isArray(parsed)) {\n        return parsed.map((item) => String(item || '').trim()).filter(Boolean);\n      }\n    } catch {}\n  }\n  return [];\n};\n\nconst imageUrls = parseArray($json.image_urls);\nconst firstImage = imageUrls.find(Boolean) || '';\n\nreturn [{\n  json: {\n    channel: $json.channel,\n    page_id: $json.page_id,\n    sender_id: $json.sender_id,\n    message_text: String($json.merged_text || '').trim(),\n    has_image_attachment: imageUrls.length > 0,\n    image_url: firstImage,\n    image_urls: imageUrls,\n    attachment_count: imageUrls.length,\n    fragment_count: Number($json.fragment_count || 0),\n    buffer_version: Number($json.buffer_version || 0),\n    source_message_id: String($json.last_mid || ''),\n    first_event_at: $json.first_event_at,\n    last_event_at: $json.last_event_at,\n    is_buffered: true,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -192,
+        -544
+      ],
+      "id": "be64fb44-8e7d-4197-8349-5a40fa4714de",
+      "name": "Set Buffered Conversation Context"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.fb_conversation_buffer\nset\n  status = 'processed',\n  processed_at = now(),\n  updated_at = now()\nwhere channel = $1::text\n  and page_id = $2::text\n  and sender_id = $3::text\n  and buffer_version = $4::integer\nreturning channel, page_id, sender_id, buffer_version, status, processed_at;",
+        "options": {
+          "queryReplacement": "={{ [\n  $('Set Buffered Conversation Context').item.json.channel || \"facebook\",\n  $('Set Buffered Conversation Context').item.json.page_id,\n  $('Set Buffered Conversation Context').item.json.sender_id,\n  Number($('Set Buffered Conversation Context').item.json.buffer_version || 0)\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2672,
+        -176
+      ],
+      "id": "a73ee2b2-b5e7-45a4-b7be-bd9b848b012f",
+      "name": "PG Mark Facebook Buffer Processe",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.query[\"hub.challenge\"] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1376,
+        -544
+      ],
+      "id": "7d649919-e201-4b61-b374-2cd956bced91",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"ok\": true}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -1648,
+        -144
+      ],
+      "id": "376c24f4-5f49-4bea-9210-f4e17b21ee67",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "6f387093-c2ff-458c-bb36-8354d7bda561",
+              "leftValue": "={{ Array.isArray($json.output?.product) && $json.output.product.some((item) => String(item.image || '').trim() !== '') }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2464,
+        16
+      ],
+      "id": "ada4fe89-4d93-48f0-a084-0eff9fc6637b",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v25.0/me/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "facebookGraphApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"recipient\": {\n    \"id\": \"{{ String($json.sender_id || '').trim() }}\"\n  },\n  \"messaging_type\": \"RESPONSE\",\n  \"message\": {\n    \"attachment\": {\n      \"type\": \"template\",\n      \"payload\": {\n        \"template_type\": \"generic\",\n        \"image_aspect_ratio\": \"square\",\n        \"elements\": {{ JSON.stringify($json.elements) }}\n      }\n    }\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3424,
+        -16
+      ],
+      "id": "8618a540-7ec6-48d1-a9a4-c12fe0bad82d",
+      "name": "HTTP Reply Facebook Carousel",
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "daIRt8RpKc4mvqah",
+          "name": "Facebook Graph account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const sender_id = String($('Set Buffered Conversation Context').first().json.sender_id || '').trim();\n\nconst isHttpUrl = (value) => /^https?:\\/\\//i.test(String(value || '').trim());\nconst products = Array.isArray($json.output?.product) ? $json.output.product : [];\n\nconst elements = products\n  .map((item, index) => {\n    const imageUrl = String(item.image || '').trim();\n    if (!isHttpUrl(imageUrl)) return null;\n\n    const websiteUrl = String(item.website_url || '').trim();\n    const hasWebsiteUrl = isHttpUrl(websiteUrl);\n\n    const title = String(item.title || `San pham ${index + 1}`)\n      .replace(/\\s+/g, ' ')\n      .trim()\n      .slice(0, 80);\n\n    const subtitle = [\n      item.price ? `Giá bán: ${String(item.price).trim()}` : '',\n      item.size ? `Size: ${String(item.size).trim()}` : '',\n      item.variant ? String(item.variant).trim() : '',\n    ].filter(Boolean).join(' | ').slice(0, 80);\n\n    const element = {\n      title,\n      image_url: imageUrl,\n      subtitle,\n    };\n\n    if (hasWebsiteUrl) {\n      element.default_action = {\n        type: 'web_url',\n        url: websiteUrl,\n        webview_height_ratio: 'full',\n      };\n      element.buttons = [\n        {\n          type: 'web_url',\n          url: websiteUrl,\n          title: 'Xem chi tiết',\n          webview_height_ratio: 'full',\n        },\n      ];\n    }\n\n    return element;\n  })\n  .filter(Boolean)\n  .slice(0, 5);\n\nreturn [{ json: { sender_id, elements } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2784,
+        0
+      ],
+      "id": "fb09a898-f715-49c7-858c-2ca80cbabb7d",
+      "name": "Set Facebook Product Carousel"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "627d66af-3e7a-43e8-90d3-7f333896c446",
+              "leftValue": "={{ Array.isArray($json.elements) ? $json.elements.length : 0 }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3088,
+        0
+      ],
+      "id": "d641aa8b-3890-4a56-b8a1-ed9c615e585d",
+      "name": "If Has Carousel Elements"
+    },
+    {
+      "parameters": {
+        "description": "Dùng tool này khi khách hỏi về tồn kho, còn hàng không, còn size không, hết hàng chưa, còn bao nhiêu, hoặc muốn kiểm tra hàng theo khu vực gần khách.\n\nTool này tự xử lý toàn bộ quy trình:\n- xác định kho phù hợp theo thành phố và quận/huyện của khách nếu có\n- ưu tiên kho gần khu vực khách\n- gọi hệ thống Nhanh để kiểm tra tồn kho sản phẩm\n- trả về kết quả tồn kho đã được tổng hợp\n\nInput:\n- product_query: tên hoặc mã sản phẩm cần kiểm tra tồn kho\n- city_query: thành phố của khách nếu có, ví dụ Ho Chi Minh, Ha Noi, Da Nang\n- district_query: quận/huyện của khách nếu có, ví dụ Binh Thanh, Cau Giay\n- max_results: số lượng kết quả tối đa cần trả về\n\nTool sẽ trả về:\n- ok: true/false\n- matched_depot_ids: danh sách kho phù hợp với khu vực khách\n- applied_depot_ids: danh sách kho thực tế dùng để kiểm tra tồn kho\n- available_count: số biến thể còn hàng\n- available_items: các biến thể còn hàng\n- items: toàn bộ kết quả tồn kho\n\nCách hiểu kết quả:\n- available_count > 0: có hàng ở kho phù hợp\n- available_count = 0: không có hàng ở kho phù hợp hoặc sản phẩm đang hết\n- nếu matched_depot_ids rỗng thì tool sẽ fallback sang kiểm tra toàn hệ thống\n\nKhông dùng tool này cho báo giá, tạo đơn, hay gửi ticket.\nNếu ok = false thì không được tự đoán tồn kho.\nNếu chưa có product_query rõ ràng thì cần hỏi lại tên hoặc mã sản phẩm trước khi gọi tool.",
+        "workflowId": {
+          "__rl": true,
+          "value": "2cKsBLk5DOGKJywA",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/2cKsBLk5DOGKJywA",
+          "cachedResultName": "Nhanh_Check_Inventory_By_Location"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "product_query": "={{ $json.product_query }}",
+            "max_results": "={{ $json.max_results }}",
+            "city_query": "={{ $json.city_query }}",
+            "district_query": "={{ $json.district_query }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "product_query",
+              "displayName": "product_query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "max_results",
+              "displayName": "max_results",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "city_query",
+              "displayName": "city_query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "district_query",
+              "displayName": "district_query",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        2480,
+        528
+      ],
+      "id": "88ea2490-9246-4070-bd88-e04c73913919",
+      "name": "Call 'Nhanh_Check_Inventory_By_Location'"
+    },
+    {
+      "parameters": {
+        "operation": "select",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "customer_phase_state",
+          "mode": "list",
+          "cachedResultName": "customer_phase_state"
+        },
+        "limit": 1,
+        "where": {
+          "values": [
+            {
+              "column": "channel",
+              "value": "={{ $('Set Buffered Conversation Context').first().json.channel || 'facebook' }}"
+            },
+            {
+              "column": "page_id",
+              "value": "={{ $('Set Buffered Conversation Context').first().json.page_id || '' }}"
+            },
+            {
+              "column": "sender_id",
+              "value": "={{ $('Set Buffered Conversation Context').first().json.sender_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -368,
+        -176
+      ],
+      "id": "d671f98f-fef4-4ec4-88dd-8eb818667aec",
+      "name": "PG Get Lead State",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.customer_phase_state (\n  channel,\n  page_id,\n  sender_id,\n  customer_stage,\n  lead_status,\n  intent_score,\n  has_clear_need,\n  ask_for_phone_now,\n  handoff_ready,\n  handoff_created,\n  phone_capture_status,\n  handoff_reason,\n  need_summary,\n  products_interested,\n  fullname,\n  phone,\n  address,\n  customer_city,\n  customer_district,\n  quoted_at,\n  asked_phone_at,\n  last_customer_message_at,\n  last_bot_reply_at,\n  last_customer_message_excerpt,\n  last_bot_reply_excerpt,\n  first_seen_at\n)\nvalues (\n  $1::text,\n  nullif($2::text, ''),\n  $3::text,\n  $4::text,\n  $5::text,\n  $6::integer,\n  $7::boolean,\n  $8::boolean,\n  $9::boolean,\n  $10::boolean,\n  $11::text,\n  nullif($12::text, ''),\n  nullif($13::text, ''),\n  nullif($14::text, ''),\n  nullif($15::text, ''),\n  nullif($16::text, ''),\n  nullif($17::text, ''),\n  nullif($18::text, ''),\n  nullif($19::text, ''),\n  $20::timestamptz,\n  $21::timestamptz,\n  $22::timestamptz,\n  $23::timestamptz,\n  nullif($24::text, ''),\n  nullif($25::text, ''),\n  $26::timestamptz\n)\non conflict (channel, page_id, sender_id)\ndo update set\n  customer_stage = excluded.customer_stage,\n  lead_status = excluded.lead_status,\n  intent_score = excluded.intent_score,\n  has_clear_need = excluded.has_clear_need,\n  ask_for_phone_now = excluded.ask_for_phone_now,\n  handoff_ready = excluded.handoff_ready,\n  handoff_reason = excluded.handoff_reason,\n  need_summary = coalesce(excluded.need_summary, public.customer_phase_state.need_summary),\n  products_interested = coalesce(excluded.products_interested, public.customer_phase_state.products_interested),\n  fullname = coalesce(excluded.fullname, public.customer_phase_state.fullname),\n  phone = coalesce(excluded.phone, public.customer_phase_state.phone),\n  address = coalesce(excluded.address, public.customer_phase_state.address),\n  customer_city = coalesce(excluded.customer_city, public.customer_phase_state.customer_city),\n  customer_district = coalesce(excluded.customer_district, public.customer_phase_state.customer_district),\n  quoted_at = coalesce(excluded.quoted_at, public.customer_phase_state.quoted_at),\n  asked_phone_at = coalesce(excluded.asked_phone_at, public.customer_phase_state.asked_phone_at),\n  last_customer_message_at = excluded.last_customer_message_at,\n  last_bot_reply_at = excluded.last_bot_reply_at,\n  last_customer_message_excerpt = excluded.last_customer_message_excerpt,\n  last_bot_reply_excerpt = excluded.last_bot_reply_excerpt,\n  first_seen_at = coalesce(public.customer_phase_state.first_seen_at, excluded.first_seen_at)\nreturning *;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.channel,\n  $json.page_id,\n  $json.sender_id,\n  $json.customer_stage,\n  $json.lead_status,\n  Number($json.intent_score || 0),\n  Boolean($json.has_clear_need),\n  Boolean($json.ask_for_phone_now),\n  Boolean($json.handoff_ready),\n  Boolean($json.handoff_created),\n  $json.phone_capture_status,\n  $json.handoff_reason || '',\n  $json.need_summary || '',\n  $json.products_interested || '',\n  $json.fullname || '',\n  $json.phone || '',\n  $json.address || '',\n  $json.customer_city || '',\n  $json.customer_district || '',\n  $json.quoted_at || null,\n  $json.asked_phone_at || null,\n  $json.last_customer_message_at || null,\n  $json.last_bot_reply_at || null,\n  $json.last_customer_message_excerpt || '',\n  $json.last_bot_reply_excerpt || '',\n  $json.first_seen_at || null,\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2672,
+        -352
+      ],
+      "id": "61ef9261-b3c2-4e4d-8ad6-e585a4c93fd5",
+      "name": "PG Upsert Lead State",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b956c66c-4b78-44c2-997d-13b903b463f1",
+              "leftValue": "={{ $json.handoff_ready === true && $json.handoff_created !== true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2880,
+        -352
+      ],
+      "id": "dab9dd48-8e4e-4402-bf55-a28819bb5a93",
+      "name": "If Handoff Ready"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "lead_handoff_queue",
+          "mode": "list",
+          "cachedResultName": "lead_handoff_queue"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "channel": "={{ $json.channel }}",
+            "page_id": "={{ $json.page_id }}",
+            "sender_id": "={{ $json.sender_id }}",
+            "phone": "={{ $json.phone }}",
+            "fullname": "={{ $json.fullname }}",
+            "products_interested": "={{ $json.products_interested }}",
+            "need_summary": "={{ $json.need_summary }}",
+            "handoff_reason": "{{ $json.handoff_reason }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "channel",
+              "displayName": "channel",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "page_id",
+              "displayName": "page_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender_id",
+              "displayName": "sender_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fullname",
+              "displayName": "fullname",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "products_interested",
+              "displayName": "products_interested",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "need_summary",
+              "displayName": "need_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "handoff_reason",
+              "displayName": "handoff_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "processed_at",
+              "displayName": "processed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3120,
+        -368
+      ],
+      "id": "07c5617b-ce6b-42b0-8a42-342551475b94",
+      "name": "Insert Lead Handoff Queue",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "update public.customer_phase_state\nset handoff_created = true\nwhere channel = $1::text\n  and page_id is not distinct from nullif($2::text, '')\n  and sender_id = $3::text\nreturning *;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.channel,\n  $json.page_id || '',\n  $json.sender_id,\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3328,
+        -368
+      ],
+      "id": "42f89844-d906-4606-8f78-ec8e8ad19179",
+      "name": "Update handoff_created",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4b28840c-4575-40f1-99e7-13b9d2495e81",
+              "name": "=prev_customer_stage",
+              "value": "={{ $json.customer_stage || 'new' }}",
+              "type": "string"
+            },
+            {
+              "id": "e65b028c-60ca-478a-a8c4-7d3046269e90",
+              "name": "prev_lead_status",
+              "value": "={{ $json.lead_status || 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "201e18d1-859a-4937-8d28-2f1585df8b7a",
+              "name": "prev_intent_score",
+              "value": "={{ Number($json.intent_score || 0) }}",
+              "type": "string"
+            },
+            {
+              "id": "5c9bed8f-7776-4df8-878a-80ebb5105000",
+              "name": "prev_has_clear_need",
+              "value": "={{ Boolean($json.has_clear_need) }}",
+              "type": "string"
+            },
+            {
+              "id": "feeec825-589a-498d-b0a7-a5f7c769342e",
+              "name": "prev_ask_for_phone_now",
+              "value": "={{ Boolean($json.ask_for_phone_now) }}",
+              "type": "string"
+            },
+            {
+              "id": "b6fef599-0493-4329-ba91-181775e62277",
+              "name": "prev_handoff_ready",
+              "value": "={{ Boolean($json.handoff_ready) }}",
+              "type": "string"
+            },
+            {
+              "id": "81756c38-958b-4ab0-b0bb-60c77ac05cdc",
+              "name": "prev_handoff_created",
+              "value": "={{ Boolean($json.handoff_created) }}",
+              "type": "string"
+            },
+            {
+              "id": "2cbb113e-9ca0-41c0-bb60-0bad4d200920",
+              "name": "prev_phone_capture_status",
+              "value": "={{ $json.phone_capture_status || 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "31167515-a41f-4fd7-9958-bddded1b6c72",
+              "name": "prev_handoff_reason",
+              "value": "={{ $json.handoff_reason || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "d4ab3b83-76f5-49bd-a7be-345eed78b8b7",
+              "name": "prev_need_summary",
+              "value": "={{ $json.need_summary || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "17b03ee1-9840-42d5-8606-f5868bd6e7a8",
+              "name": "prev_products_interested",
+              "value": "={{ $json.products_interested || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "ac73af9e-3273-4275-b0e6-c217fef2d49d",
+              "name": "prev_fullname",
+              "value": "={{ $json.fullname || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "7b4d4883-089e-44c3-98a0-e8f9bb6741c9",
+              "name": "prev_phone",
+              "value": "={{ $json.phone || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "5d131a6a-51f4-4000-a322-e91a70b73f3c",
+              "name": "prev_address",
+              "value": "={{ $json.address || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "44561dba-5b42-4480-a39e-f4a329552357",
+              "name": "prev_customer_city",
+              "value": "={{ $json.customer_city || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "e55e17c4-2d37-414d-bf35-95a07c2cc9ed",
+              "name": "prev_customer_district",
+              "value": "={{ $json.customer_district || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "9806f26c-4816-4268-9f9d-8b433301ab3b",
+              "name": "prev_quoted_at",
+              "value": "={{ $json.quoted_at || null }}",
+              "type": "string"
+            },
+            {
+              "id": "baeb0e76-075e-4e12-8286-7638080c11c4",
+              "name": "prev_asked_phone_at",
+              "value": "={{ $json.asked_phone_at || null }}",
+              "type": "string"
+            },
+            {
+              "id": "d74bc197-6597-481e-8fad-ede18700f92c",
+              "name": "prev_first_seen_at",
+              "value": "={{ $json.first_seen_at || null }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -176,
+        -176
+      ],
+      "id": "a7572dfc-d103-4d6e-89b1-d07e23606a85",
+      "name": "Edit Fields Prev Lead State"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        0,
+        -192
+      ],
+      "id": "d0aec8f3-2da8-42d4-907b-b4425d232665",
+      "name": "Merge Context + Prev Lead State"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "92624e66-bc80-46e7-bec2-3a5fc95e77a8",
+              "name": "image_analysis_status",
+              "value": "none",
+              "type": "string"
+            },
+            {
+              "id": "3b204457-0ebc-454f-9ab4-1473b9a6da39",
+              "name": "agent_prompt",
+              "value": "={{\n[\n  `Current message: ${$json.message_text || ''}`,\n  `Previous customer stage: ${$json.prev_customer_stage || 'new'}`,\n  `Previous lead status: ${$json.prev_lead_status || 'unknown'}`,\n  `Previous need summary: ${$json.prev_need_summary || ''}`,\n  `Known fullname: ${$json.prev_fullname || ''}`,\n  `Known phone: ${$json.prev_phone || ''}`,\n  `Known address: ${$json.prev_address || ''}`,\n  `Image analysis status: none`,\n].join('\\\\n')\n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        352,
+        -160
+      ],
+      "id": "b90c0f55-8e1a-4fde-8df2-ccca4d23a761",
+      "name": "Edit Fields Agent Input Text"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f31a4854-0570-402c-945c-1d50f0de0d76",
+              "name": "image_analysis_status",
+              "value": "failed",
+              "type": "string"
+            },
+            {
+              "id": "b26e6c93-7bb6-414f-9512-2259eee48eb0",
+              "name": "agent_prompt",
+              "value": "={{\n[\n  `Current message: ${$json.message_text || ''}`,\n  `Previous customer stage: ${$json.prev_customer_stage || 'new'}`,\n  `Previous lead status: ${$json.prev_lead_status || 'unknown'}`,\n  `Previous need summary: ${$json.prev_need_summary || ''}`,\n  `Known phone: ${$json.prev_phone || ''}`,\n  `Image analysis status: failed`,\n  `The uploaded image could not be embedded or read.`,\n].join('\\\\n')\n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        992,
+        -544
+      ],
+      "id": "9b10b28e-386c-4a18-96b5-0a3c62433e0e",
+      "name": "Edit Fields Agent Input Image Failed"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ba119de6-55c3-4eac-a899-aa710c4cb4db",
+              "name": "image_analysis_status",
+              "value": "matched_candidates",
+              "type": "string"
+            },
+            {
+              "id": "5c6d69f4-0464-4ad5-acfe-0cd902edccbb",
+              "name": "agent_prompt",
+              "value": "={{\n[\n  `Current message: ${$json.customer_message || ''}`,\n  `Previous customer stage: ${$json.prev_customer_stage || 'new'}`,\n  `Previous lead status: ${$json.prev_lead_status || 'unknown'}`,\n  `Previous need summary: ${$json.prev_need_summary || ''}`,\n  `Known fullname: ${$json.prev_fullname || ''}`,\n  `Known phone: ${$json.prev_phone || ''}`,\n  `Image analysis status: matched_candidates`,\n  `Image candidates JSON: ${JSON.stringify($json.candidates || [])}`,\n].join('\\n')\n}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        976,
+        -352
+      ],
+      "id": "9234fde6-c23b-4b55-8f39-6aef909d5657",
+      "name": "Edit Fields Agent Input Image Search"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e0adc027-6237-4405-ba2d-7e5b725f99c9",
+              "name": "channel",
+              "value": "={{ $('Set Buffered Conversation Context').first().json.channel \n||\n 'facebook' }}",
+              "type": "string"
+            },
+            {
+              "id": "cc230797-4fee-4800-8c64-d0dd4d0649d3",
+              "name": "page_id",
+              "value": "={{ $('Set Buffered Conversation Context').first().json.page_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "d4ab4038-bcbc-4aaa-b216-fab796dedcac",
+              "name": "sender_id",
+              "value": "={{ $('Set Buffered Conversation Context').first().json.sender_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "1a593ff2-ee28-4bf3-a038-d938d7665e1f",
+              "name": "customer_stage",
+              "value": "={{ $json.output.customer_stage || $('Edit Fields Prev Lead State').first().json.prev_customer_stage || 'new' }}",
+              "type": "string"
+            },
+            {
+              "id": "12c9442e-9dbc-461a-9dfb-a9a2c89ab4fb",
+              "name": "lead_status",
+              "value": "={{ $json.output.lead_status || $('Edit Fields Prev Lead State').first().json.prev_lead_status || 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "797b148d-1639-4221-8396-33c6735c5d5e",
+              "name": "intent_score",
+              "value": "={{ Number($json.output.intent_score || $('Edit Fields Prev Lead State').first().json.prev_intent_score || 0) }}",
+              "type": "string"
+            },
+            {
+              "id": "8f28f8c5-a1ec-4f4d-8602-56cf63c442d0",
+              "name": "has_clear_need",
+              "value": "={{ Boolean($json.output.has_clear_need) }}",
+              "type": "string"
+            },
+            {
+              "id": "44267eea-fb2d-471e-9574-109d4d66bd12",
+              "name": "ask_for_phone_now",
+              "value": "={{ Boolean($json.output.ask_for_phone_now) }}",
+              "type": "string"
+            },
+            {
+              "id": "38283538-d4b1-4a85-ae41-26effc43adfe",
+              "name": "handoff_ready",
+              "value": "={{ Boolean($json.output.handoff_ready) }}",
+              "type": "string"
+            },
+            {
+              "id": "f9f798ac-0e64-4ab9-abbd-c386a503fb2a",
+              "name": "handoff_created",
+              "value": "={{ $('Edit Fields Prev Lead State').first().json.prev_handoff_created || false }}",
+              "type": "string"
+            },
+            {
+              "id": "a432c406-b43b-429d-b471-30364f7cc9f2",
+              "name": "phone_capture_status",
+              "value": "={{\n  String($json.output.phone || '').trim()\n    ? 'provided'\n    : ($json.output.ask_for_phone_now === true\n        ? 'requested'\n        : $('Edit Fields Prev Lead State').first().json.prev_phone_capture_status || 'unknown')\n}}",
+              "type": "string"
+            },
+            {
+              "id": "c1ae1182-b074-46c5-bb94-82b2ff54716f",
+              "name": "handoff_reason",
+              "value": "={{ $json.output.handoff_reason || $('Edit Fields Prev Lead State').first().json.prev_handoff_reason || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "5527f155-7132-4056-b8c9-7744bf42c09b",
+              "name": "need_summary",
+              "value": "={{ $json.output.need_summary || $('Edit Fields Prev Lead State').first().json.prev_need_summary || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "dfaf1065-b18c-4971-936c-7aa47cee50e2",
+              "name": "products_interested",
+              "value": "={{ $json.output.products_interested || $('Edit Fields Prev Lead State').first().json.prev_products_interested || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "b0b39cf5-a5d0-47b0-bb06-ce2946413adb",
+              "name": "fullname",
+              "value": "={{ $json.output.fullname || $('Edit Fields Prev Lead State').first().json.prev_fullname || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "f83b9f97-ede7-4dd8-a64d-1f5aa30e4299",
+              "name": "phone",
+              "value": "={{ $json.output.phone || $('Edit Fields Prev Lead State').first().json.prev_phone || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "61d473ed-c7a2-456a-b56b-e65ea71343c2",
+              "name": "address",
+              "value": "={{ $json.output.address || $('Edit Fields Prev Lead State').first().json.prev_address || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "2ccf0a7f-995a-41c6-9a47-d31cc6eb602b",
+              "name": "customer_city",
+              "value": "={{ $('Edit Fields Prev Lead State').first().json.prev_customer_city || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "28b40380-b804-47ba-972f-efe18de9c7f1",
+              "name": "customer_district",
+              "value": "={{ $('Edit Fields Prev Lead State').first().json.prev_customer_district || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "0d50a6e6-2753-4313-8292-04d613350658",
+              "name": "quoted_at",
+              "value": "={{\n  $json.output.customer_stage === 'quoted'\n    ? new Date().toISOString()\n    : $('Edit Fields Prev Lead State').first().json.prev_quoted_at || null\n}}",
+              "type": "string"
+            },
+            {
+              "id": "f23725c9-8714-42ce-abfe-a3307bebd5c9",
+              "name": "asked_phone_at",
+              "value": "={{\n  $json.output.ask_for_phone_now === true\n    ? new Date().toISOString()\n    : $('Edit Fields Prev Lead State').first().json.prev_asked_phone_at || null\n}}",
+              "type": "string"
+            },
+            {
+              "id": "b4c1d5e2-dcd5-4ced-a579-04ae9f04241e",
+              "name": "last_customer_message_at",
+              "value": "={{ $('Set Buffered Conversation Context').first().json.event_timestamp_iso || new Date().toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "3495698b-e72c-4de8-9c05-6e30d193dab2",
+              "name": "last_bot_reply_at",
+              "value": "={{ new Date().toISOString() }}",
+              "type": "string"
+            },
+            {
+              "id": "1783090e-b86d-4465-94d9-dea5e14e89a3",
+              "name": "last_customer_message_excerpt",
+              "value": "={{ String($('Set Buffered Conversation Context').first().json.message_text || '').slice(0, 500) }}",
+              "type": "string"
+            },
+            {
+              "id": "9d5a3ffa-204c-4370-a274-144ec1fd475c",
+              "name": "last_bot_reply_excerpt",
+              "value": "={{ String($json.output.message || '').slice(0, 500) }}",
+              "type": "string"
+            },
+            {
+              "id": "60516596-9599-4b1f-a1c5-c10e576f5f2f",
+              "name": "first_seen_at",
+              "value": "={{ $('Edit Fields Prev Lead State').first().json.prev_first_seen_at || new Date().toISOString() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2464,
+        -352
+      ],
+      "id": "4adbd08f-091d-444e-add2-b2d7db3a573d",
+      "name": "Edit Fields Prepare Lead State Row"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Edit Fields Prepare Lead State Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Structured Output Parser",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Build Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize": {
+      "main": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pinecone Vector Store1": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI1": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Pinecone Vector Store1",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Docs": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "If2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If2": {
+      "main": [
+        [
+          {
+            "node": "PG Merge Facebook Conversation Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet in Google Sheets": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request10": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Get Zalo Token Cache": {
+      "main": [
+        [
+          {
+            "node": "If Zalo Token Still Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Zalo Token Still Valid": {
+      "main": [
+        [
+          {
+            "node": "Set Active Zalo Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Zalo OA Access Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Zalo OA Access Token": {
+      "main": [
+        [
+          {
+            "node": "Set Refreshed Zalo Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Refreshed Zalo Token": {
+      "main": [
+        [
+          {
+            "node": "PG Save Zalo Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Save Zalo Token": {
+      "main": [
+        [
+          {
+            "node": "Set Active Zalo Token If False",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Active Zalo Token": {
+      "main": [
+        []
+      ]
+    },
+    "Set Active Zalo Token If False": {
+      "main": [
+        []
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "PG Get Product Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet2": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "If3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If3": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HTTP Embed Image URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Embed Image URL": {
+      "main": [
+        [
+          {
+            "node": "If4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If4": {
+      "main": [
+        [
+          {
+            "node": "Set Vector Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Vector Payload": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Get Product Images": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Image Attachment": {
+      "main": [
+        [
+          {
+            "node": "Set Customer Image Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields Agent Input Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Customer Image Payload": {
+      "main": [
+        [
+          {
+            "node": "HTTP Embed Customer Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Embed Customer Image": {
+      "main": [
+        [
+          {
+            "node": "If Customer Embedding Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Customer Embedding Valid": {
+      "main": [
+        [
+          {
+            "node": "Set Customer Query Vector",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields Agent Input Image Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Customer Query Vector": {
+      "main": [
+        [
+          {
+            "node": "PG Search Top K Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Search Top K Products": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields Agent Input Image Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Merge Facebook Conversation Buffer": {
+      "main": [
+        [
+          {
+            "node": "If Facebook Buffer Updated",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Facebook Buffer Updated": {
+      "main": [
+        [
+          {
+            "node": "Wait Conversation Window",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Load Facebook Conversation Buffer": {
+      "main": [
+        [
+          {
+            "node": "If Latest Conversation Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Conversation Window": {
+      "main": [
+        [
+          {
+            "node": "PG Load Facebook Conversation Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Latest Conversation Buffer": {
+      "main": [
+        [
+          {
+            "node": "Set Buffered Conversation Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Buffered Conversation Context": {
+      "main": [
+        [
+          {
+            "node": "PG Get Lead State",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Context + Prev Lead State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Mark Facebook Buffer Processe": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "PG Mark Facebook Buffer Processe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Set Facebook Product Carousel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Reply Facebook Carousel": {
+      "main": [
+        []
+      ]
+    },
+    "Set Facebook Product Carousel": {
+      "main": [
+        [
+          {
+            "node": "If Has Carousel Elements",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Carousel Elements": {
+      "main": [
+        [
+          {
+            "node": "HTTP Reply Facebook Carousel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'Nhanh_Check_Inventory_By_Location'": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Get Lead State": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields Prev Lead State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Upsert Lead State": {
+      "main": [
+        [
+          {
+            "node": "If Handoff Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Handoff Ready": {
+      "main": [
+        [
+          {
+            "node": "Insert Lead Handoff Queue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Insert Lead Handoff Queue": {
+      "main": [
+        [
+          {
+            "node": "Update handoff_created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields Prev Lead State": {
+      "main": [
+        [
+          {
+            "node": "Merge Context + Prev Lead State",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Context + Prev Lead State": {
+      "main": [
+        [
+          {
+            "node": "If Has Image Attachment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields Agent Input Text": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields Agent Input Image Failed": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields Agent Input Image Search": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields Prepare Lead State Row": {
+      "main": [
+        [
+          {
+            "node": "PG Upsert Lead State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "75c72159-e3a3-41ce-adb0-629d2a4d5b67",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "41e49f29cafdfc4ce0bd59d40e7d7bda8c2d2148c515095698e03d3f19dd2937"
+  },
+  "id": "PIn9axetbEIfLjna",
+  "tags": []
+}
