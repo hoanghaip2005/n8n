@@ -1,0 +1,961 @@
+{
+  "name": "Zalo_AddOrder_From_Ticket",
+  "nodes": [
+    {
+      "id": "d3024281-cd99-47a6-b299-43e7ef0e0dc9",
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        320
+      ],
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "id": "7f9f7078-2743-45d4-8195-7822f1ea6ac2",
+      "parameters": {
+        "jsCode": "const originalText = String($json.command_text || $json.text || '').trim();\nconst extractTicketId = (value) => {\n  const rawValue = String(value || '').trim();\n  if (!rawValue) return null;\n  const direct = Number(rawValue);\n  if (Number.isInteger(direct) && direct > 0) return direct;\n  const match = rawValue.match(/(?:^|\\b)(?:ticket\\s+)?(?:t\\s*[-:#]?\\s*)?(\\d+)(?:\\b|$)/i);\n  if (!match) return null;\n  const parsed = Number(match[1]);\n  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;\n};\nconst normalizeWord = (value) => String(value || '').trim().toLowerCase();\n\nlet addorderAction = 'patch';\nlet addorderPatchText = '';\nlet ticketId = null;\nlet replyText = '';\n\nif (!/^\\/+addorder\\b/i.test(originalText)) {\n  replyText = 'Không nhận ra lệnh /addorder.';\n} else {\n  const body = originalText.replace(/^\\/+addorder\\b/i, '').trim();\n  const tokens = body ? body.split(/\\s+/).filter(Boolean) : [];\n  if (['show', 'confirm', 'cancel', 'reset'].includes(normalizeWord(tokens[0]))) {\n    addorderAction = normalizeWord(tokens.shift());\n  }\n  if (normalizeWord(tokens[0]) === 'ticket') {\n    tokens.shift();\n  }\n  if (tokens.length) {\n    ticketId = extractTicketId(tokens[0]);\n    if (ticketId) tokens.shift();\n  }\n  if (!ticketId) {\n    ticketId = extractTicketId(body);\n  }\n  addorderPatchText = tokens.join(' ').trim();\n\n  if (!ticketId) {\n    replyText = 'Thiếu ticket. Ví dụ: /addorder t-3 tên ...';\n  } else if (addorderAction === 'patch' && !addorderPatchText) {\n    replyText = 'Thiếu nội dung. Dùng /addorder show t-3 hoặc /addorder t-3 tên ...';\n  }\n}\n\nreturn [{\n  json: {\n    ...$json,\n    command_text: originalText,\n    addorder_action: addorderAction,\n    addorder_patch_text: addorderPatchText,\n    ticket_id: ticketId || null,\n    ticket_ref_raw: ticketId ? ('T-' + ticketId) : '',\n    addorder_has_error: Boolean(replyText),\n    reply_text: replyText,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        320
+      ],
+      "name": "Code Parse AddOrder Command"
+    },
+    {
+      "id": "805c7d0c-ffa3-4bc4-ae79-eac169a69a32",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with input as (\n  select\n    nullif($1::text, '')::bigint as ticket_id,\n    nullif($2::text, '') as group_id\n),\nticket as (\n  select q.*\n  from public.lead_handoff_queue q\n  join input i on i.ticket_id = q.id\n  where i.group_id is null or q.group_id = i.group_id\n  limit 1\n),\ncustomer as (\n  select cps.*\n  from ticket t\n  left join lateral (\n    select cps.*\n    from public.customer_phase_state cps\n    where (\n      t.customer_phase_state_id is not null and cps.id = t.customer_phase_state_id\n    ) or (\n      cps.channel = t.channel\n      and coalesce(cps.page_id, '') = coalesce(t.page_id, '')\n      and cps.sender_id = t.sender_id\n    )\n    order by\n      case when t.customer_phase_state_id is not null and cps.id = t.customer_phase_state_id then 0 else 1 end,\n      cps.updated_at desc nulls last,\n      cps.id desc\n    limit 1\n  ) cps on true\n),\ndraft as (\n  select d.*\n  from public.order_drafts d\n  join input i on i.ticket_id = d.handoff_queue_id\n  limit 1\n)\nselect\n  coalesce((select to_jsonb(ticket) from ticket), '{}'::jsonb) as ticket_row,\n  coalesce((select to_jsonb(customer) from customer), '{}'::jsonb) as customer_row,\n  coalesce((select to_jsonb(draft) from draft), '{}'::jsonb) as draft_row;",
+        "options": {
+          "queryReplacement": "={{ [ $json.ticket_id || '', $json.group_id || '' ] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        720,
+        320
+      ],
+      "name": "PG Load AddOrder Context",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "0a790da7-85bb-44d9-8869-e8dcdb0eee2a",
+      "parameters": {
+        "jsCode": "const base = $('Code Parse AddOrder Command').first().json;\nconst row = $input.first()?.json || {};\n\nconst parseJson = (value) => {\n  if (value && typeof value === 'object') return value;\n  if (typeof value !== 'string') return {};\n  try {\n    return JSON.parse(value);\n  } catch {\n    return {};\n  }\n};\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst digitsOnly = (value) => String(value || '').replace(/[^\\d]/g, '');\nconst numberOrNull = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n};\nconst coalesceText = (...values) => {\n  for (const value of values) {\n    const text = safeText(value);\n    if (text) return text;\n  }\n  return '';\n};\nconst coalesceNumber = (...values) => {\n  for (const value of values) {\n    const parsed = numberOrNull(value);\n    if (parsed !== null) return parsed;\n  }\n  return null;\n};\n\nconst ticket = parseJson(row.ticket_row);\nconst customer = parseJson(row.customer_row);\nconst draft = parseJson(row.draft_row);\nconst mergedSnapshot = parseJson(draft.merged_snapshot);\nconst productSearchResult = Array.isArray(parseJson(draft.product_search_result)) ? parseJson(draft.product_search_result) : [];\nconst locationSearchResult = parseJson(draft.location_search_result);\n\nconst baseSnapshot = {\n  customer_name: coalesceText(customer.fullname, ticket.fullname),\n  phone: digitsOnly(coalesceText(customer.phone, ticket.phone)),\n  address: coalesceText(customer.address),\n  city_name: coalesceText(customer.customer_city),\n  city_id: null,\n  district_name: coalesceText(customer.customer_district),\n  district_id: null,\n  ward_name: '',\n  ward_id: null,\n  location_version: 'v1',\n  product_query: coalesceText(customer.products_interested, ticket.products_interested),\n  product_id: null,\n  product_code: '',\n  product_name: '',\n  unit_price: null,\n  quantity: 1,\n  note: '',\n  customer_ship_fee: null,\n  deposit_amount: null,\n  transfer_amount: null,\n};\n\nconst currentSnapshot = {\n  ...baseSnapshot,\n  ...(mergedSnapshot && typeof mergedSnapshot === 'object' ? mergedSnapshot : {}),\n  customer_name: coalesceText(draft.customer_name, mergedSnapshot.customer_name, baseSnapshot.customer_name),\n  phone: digitsOnly(coalesceText(draft.phone, mergedSnapshot.phone, baseSnapshot.phone)),\n  address: coalesceText(draft.address, mergedSnapshot.address, baseSnapshot.address),\n  city_name: coalesceText(draft.city_name, mergedSnapshot.city_name, baseSnapshot.city_name),\n  city_id: coalesceNumber(draft.city_id, mergedSnapshot.city_id, baseSnapshot.city_id),\n  district_name: coalesceText(draft.district_name, mergedSnapshot.district_name, baseSnapshot.district_name),\n  district_id: coalesceNumber(draft.district_id, mergedSnapshot.district_id, baseSnapshot.district_id),\n  ward_name: coalesceText(draft.ward_name, mergedSnapshot.ward_name, baseSnapshot.ward_name),\n  ward_id: coalesceNumber(draft.ward_id, mergedSnapshot.ward_id, baseSnapshot.ward_id),\n  location_version: coalesceText(draft.location_version, mergedSnapshot.location_version, baseSnapshot.location_version) || 'v1',\n  product_query: coalesceText(draft.product_query, mergedSnapshot.product_query, baseSnapshot.product_query),\n  product_id: coalesceNumber(draft.product_id, mergedSnapshot.product_id),\n  product_code: coalesceText(draft.product_code, mergedSnapshot.product_code),\n  product_name: coalesceText(draft.product_name, mergedSnapshot.product_name),\n  unit_price: coalesceNumber(draft.unit_price, mergedSnapshot.unit_price),\n  quantity: Math.max(1, Math.round(coalesceNumber(draft.quantity, mergedSnapshot.quantity, 1) || 1)),\n  note: coalesceText(draft.note, mergedSnapshot.note),\n  customer_ship_fee: coalesceNumber(draft.customer_ship_fee, mergedSnapshot.customer_ship_fee),\n  deposit_amount: coalesceNumber(draft.deposit_amount, mergedSnapshot.deposit_amount),\n  transfer_amount: coalesceNumber(draft.transfer_amount, mergedSnapshot.transfer_amount),\n};\n\nlet replyText = safeText(base.reply_text);\nif (!ticket.id && !replyText) {\n  replyText = base.ticket_id ? ('Không thấy ticket T-' + base.ticket_id + '.') : 'Thiếu ticket. Ví dụ: /addorder t-3 tên ...';\n}\nif (!replyText && draft.status === 'created' && base.addorder_action !== 'show') {\n  replyText = draft.nhanh_order_id\n    ? ('T-' + base.ticket_id + ' đã tạo đơn Nhanh ' + draft.nhanh_order_id + '. Chưa hỗ trợ sửa bằng /addorder.')\n    : ('T-' + base.ticket_id + ' đã chốt đơn. Chưa hỗ trợ sửa bằng /addorder.');\n}\n\nconst needsAiPatch = !replyText && ['patch', 'confirm'].includes(base.addorder_action) && Boolean(safeText(base.addorder_patch_text));\nconst promptSnapshot = JSON.stringify(currentSnapshot, null, 2);\nconst addorderAiPrompt = [\n  'Command gốc: ' + safeText(base.command_text),\n  'Action: ' + safeText(base.addorder_action),\n  'Ticket: ' + (base.ticket_ref_raw || ''),\n  'Current snapshot:',\n  promptSnapshot,\n  'Patch text: ' + safeText(base.addorder_patch_text),\n].join('\\n');\n\nreturn [{\n  json: {\n    ...base,\n    ticket_row: ticket,\n    customer_row: customer,\n    draft_row: draft,\n    base_snapshot: baseSnapshot,\n    current_snapshot: currentSnapshot,\n    product_search_result: productSearchResult,\n    location_search_result: locationSearchResult,\n    customer_phase_state_id: draft.customer_phase_state_id || ticket.customer_phase_state_id || customer.id || null,\n    order_draft_id: draft.id || null,\n    order_draft_status: safeText(draft.status),\n    app_order_id: safeText(draft.app_order_id),\n    nhanh_order_id: draft.nhanh_order_id || null,\n    created_order_tracking_url: safeText(draft.nhanh_tracking_url),\n    needs_ai_patch: needsAiPatch,\n    addorder_ai_prompt: addorderAiPrompt,\n    reply_text: replyText,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        320
+      ],
+      "name": "Code Build AddOrder Context"
+    },
+    {
+      "id": "8cd104d2-7603-4e1a-890f-9ee22c88d416",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needs_ai_patch === true && !String($json.reply_text || \"\").trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1200,
+        320
+      ],
+      "name": "If Needs AddOrder Patch Parse"
+    },
+    {
+      "id": "7b0cf7ba-652e-46a3-85e8-c5cf815f4ff0",
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.addorder_ai_prompt }}",
+        "options": {
+          "systemMessage": "Bạn là AI parser cho lệnh /addorder của nội bộ sale.\nChỉ parse phần thay đổi trong patch text. Không tự tạo đơn, không tự xác nhận, không tự bịa thông tin.\nTrả về đúng 1 JSON hợp lệ. Không markdown. Không giải thích.\n\nSchema bắt buộc:\n{\n  \"customer_name\": \"\",\n  \"phone\": \"\",\n  \"address\": \"\",\n  \"city_name\": \"\",\n  \"district_name\": \"\",\n  \"ward_name\": \"\",\n  \"product_query\": \"\",\n  \"quantity\": null,\n  \"unit_price\": null,\n  \"note\": \"\",\n  \"customer_ship_fee\": null,\n  \"deposit_amount\": null,\n  \"transfer_amount\": null,\n  \"clarification_text\": \"\",\n  \"unsupported_fields\": [],\n  \"confidence\": 0.0\n}\n\nQuy tắc:\n- Chỉ điền field nếu patch text nói rõ hoặc suy ra rất chắc từ current snapshot.\n- Nếu patch chỉ nói đổi size, đổi màu, đổi mẫu và current snapshot đã có product_query, hãy trả product_query hoàn chỉnh sau khi áp dụng thay đổi.\n- Nếu patch có họ tên + số điện thoại thì tách đúng vào customer_name và phone.\n- quantity là số lượng sản phẩm. Nếu không rõ thì để null.\n- unit_price là giá bán cuối cùng mỗi sản phẩm. Nếu không rõ thì để null.\n- Các số tiền như ship/cọc/chuyển khoản phải trả về số nguyên VND, ví dụ 30k => 30000.\n- clarification_text ngắn, tiếng Việt có dấu, chỉ dùng khi patch mơ hồ.\n- unsupported_fields chỉ liệt kê các ý có trong patch nhưng chưa map được.\n- Nếu patch text không thêm gì rõ ràng thì để các field rỗng/null."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1440,
+        224
+      ],
+      "name": "AI Parse AddOrder Patch"
+    },
+    {
+      "id": "2d2a5e93-a11c-4bbb-972d-615b567e1687",
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        1440,
+        432
+      ],
+      "name": "OpenAI Chat Model AddOrder",
+      "credentials": {
+        "openAiApi": {
+          "id": "R4u2zDSLYQvqpat3",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "id": "f7a05afb-2b92-4bfd-ad29-4a9953a4d41e",
+      "parameters": {
+        "jsCode": "const base = $('Code Build AddOrder Context').first().json;\nconst raw = $json.output ?? $json.text ?? $json;\nlet text = '';\nif (typeof raw === 'string') {\n  text = raw.trim();\n} else {\n  text = JSON.stringify(raw);\n}\ntext = text.replace(/^\\`\\`\\`json\\s*/i, '').replace(/^\\`\\`\\`\\s*/i, '').replace(/\\s*\\`\\`\\`$/i, '').trim();\nlet parsed = {};\ntry {\n  parsed = JSON.parse(text);\n} catch {\n  parsed = {};\n}\nif (parsed && typeof parsed.output === 'object' && parsed.output !== null) {\n  parsed = parsed.output;\n}\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst digitsOnly = (value) => String(value || '').replace(/[^\\d]/g, '');\nconst parseMoney = (value) => {\n  const rawValue = safeText(value);\n  if (!rawValue) return null;\n  const normalized = rawValue.toLowerCase().replace(/[,\\.](?=\\d{3}\\b)/g, '').replace(/\\./g, '').replace(/,/g, '.');\n  const match = normalized.match(/(\\d+(?:\\.\\d+)?)(k)?/i);\n  if (!match) return null;\n  let amount = Number(match[1]);\n  if (!Number.isFinite(amount)) return null;\n  if (match[2]) amount *= 1000;\n  return Math.round(amount);\n};\nconst parseNumber = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n};\nconst patchText = safeText(base.addorder_patch_text);\n\nlet quantity = parseNumber(parsed.quantity);\nif ((!quantity || quantity < 1) && patchText) {\n  const quantityMatch = patchText.match(/(?:^|\\s)x\\s*(\\d+)(?:\\s|$)/i) || patchText.match(/(?:so luong|sl|qty)\\s*(\\d+)/i);\n  if (quantityMatch) quantity = Number(quantityMatch[1]);\n}\nif (quantity !== null) quantity = Math.max(1, Math.round(quantity));\n\nlet phone = digitsOnly(parsed.phone);\nif (!phone && patchText) {\n  const phoneMatch = patchText.match(/(?:^|\\D)(0\\d{9,10})(?:\\D|$)/);\n  if (phoneMatch) phone = digitsOnly(phoneMatch[1]);\n}\n\nconst parseMoneyFromPatch = (regex) => {\n  const match = patchText.match(regex);\n  return match ? parseMoney(match[1]) : null;\n};\n\nconst customerShipFee = parseNumber(parsed.customer_ship_fee) ?? parseMoneyFromPatch(/(?:ship|phi ship|thu ship)\\s*([\\d.,kK]+)/i);\nconst depositAmount = parseNumber(parsed.deposit_amount) ?? parseMoneyFromPatch(/(?:coc|dat coc)\\s*([\\d.,kK]+)/i);\nconst transferAmount = parseNumber(parsed.transfer_amount) ?? parseMoneyFromPatch(/(?:chuyen khoan|ck)\\s*([\\d.,kK]+)/i);\n\nconst unsupportedFields = Array.isArray(parsed.unsupported_fields)\n  ? parsed.unsupported_fields.map((value) => safeText(value)).filter(Boolean)\n  : [];\n\nreturn [{\n  json: {\n    ...base,\n    ai_raw_patch_output: text,\n    parsed_patch: {\n      customer_name: safeText(parsed.customer_name),\n      phone,\n      address: safeText(parsed.address),\n      city_name: safeText(parsed.city_name),\n      district_name: safeText(parsed.district_name),\n      ward_name: safeText(parsed.ward_name),\n      product_query: safeText(parsed.product_query),\n      quantity,\n      unit_price: parseNumber(parsed.unit_price),\n      note: safeText(parsed.note),\n      customer_ship_fee: customerShipFee,\n      deposit_amount: depositAmount,\n      transfer_amount: transferAmount,\n      clarification_text: safeText(parsed.clarification_text),\n      unsupported_fields: unsupportedFields,\n      confidence: parseNumber(parsed.confidence) ?? 0,\n    },\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        224
+      ],
+      "name": "Code Normalize AddOrder Patch"
+    },
+    {
+      "id": "843d16e1-1a69-40a7-8621-deeaf0d91522",
+      "parameters": {
+        "jsCode": "const data = $input.first()?.json || {};\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst digitsOnly = (value) => String(value || '').replace(/[^\\d]/g, '');\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s/-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\nconst numberOrNull = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n};\nconst cloneJson = (value) => JSON.parse(JSON.stringify(value || {}));\nconst snapshot = data.addorder_action === 'reset'\n  ? cloneJson(data.base_snapshot)\n  : cloneJson(data.current_snapshot);\nconst patch = data.parsed_patch && typeof data.parsed_patch === 'object' ? data.parsed_patch : {};\nconst patchBusinessKeys = ['customer_name', 'phone', 'address', 'city_name', 'district_name', 'ward_name', 'product_query', 'quantity', 'unit_price', 'note', 'customer_ship_fee', 'deposit_amount', 'transfer_amount'];\nconst hasPatchValue = patchBusinessKeys.some((key) => {\n  const value = patch[key];\n  if (Array.isArray(value)) return value.length > 0;\n  return value !== null && value !== undefined && String(value).trim() !== '';\n});\nconst setText = (key, value) => {\n  const text = safeText(value);\n  if (text) snapshot[key] = text;\n};\nconst setNumber = (key, value) => {\n  const parsed = numberOrNull(value);\n  if (parsed !== null) snapshot[key] = parsed;\n};\n\nif (data.addorder_action !== 'reset') {\n  setText('customer_name', patch.customer_name);\n  if (safeText(patch.phone)) snapshot.phone = digitsOnly(patch.phone);\n  setText('address', patch.address);\n  setText('city_name', patch.city_name);\n  setText('district_name', patch.district_name);\n  setText('ward_name', patch.ward_name);\n  setText('product_query', patch.product_query);\n  setNumber('quantity', patch.quantity);\n  setNumber('unit_price', patch.unit_price);\n  setText('note', patch.note);\n  setNumber('customer_ship_fee', patch.customer_ship_fee);\n  setNumber('deposit_amount', patch.deposit_amount);\n  setNumber('transfer_amount', patch.transfer_amount);\n}\n\nsnapshot.phone = digitsOnly(snapshot.phone);\nsnapshot.quantity = Math.max(1, Math.round(numberOrNull(snapshot.quantity) || 1));\nsnapshot.location_version = safeText(snapshot.location_version) || 'v1';\n\nconst productQueryChanged = normalizeText(snapshot.product_query) !== normalizeText(data.current_snapshot?.product_query || '');\nconst cityChanged = normalizeText(snapshot.city_name) !== normalizeText(data.current_snapshot?.city_name || '');\nconst districtChanged = normalizeText(snapshot.district_name) !== normalizeText(data.current_snapshot?.district_name || '');\n\nif (productQueryChanged) {\n  snapshot.product_id = null;\n  snapshot.product_code = '';\n  snapshot.product_name = '';\n  if (numberOrNull(patch.unit_price) === null) snapshot.unit_price = null;\n}\nif (cityChanged) {\n  snapshot.city_id = null;\n  snapshot.district_id = null;\n  snapshot.ward_id = null;\n  snapshot.ward_name = '';\n}\nif (districtChanged) {\n  snapshot.district_id = null;\n  snapshot.ward_id = null;\n  snapshot.ward_name = '';\n}\n\nlet replyText = safeText(data.reply_text);\nif (!replyText && data.addorder_action === 'patch' && !safeText(data.addorder_patch_text)) {\n  replyText = 'Thiếu nội dung cập nhật.';\n}\nif (!replyText && data.addorder_action === 'patch' && !hasPatchValue && safeText(patch.clarification_text)) {\n  replyText = safeText(patch.clarification_text);\n}\n\nreturn [{\n  json: {\n    ...data,\n    draft_snapshot: snapshot,\n    customer_name: safeText(snapshot.customer_name),\n    phone: digitsOnly(snapshot.phone),\n    address: safeText(snapshot.address),\n    city_name: safeText(snapshot.city_name),\n    city_id: numberOrNull(snapshot.city_id),\n    district_name: safeText(snapshot.district_name),\n    district_id: numberOrNull(snapshot.district_id),\n    ward_name: safeText(snapshot.ward_name),\n    ward_id: numberOrNull(snapshot.ward_id),\n    product_query: safeText(snapshot.product_query),\n    product_id: numberOrNull(snapshot.product_id),\n    product_code: safeText(snapshot.product_code),\n    product_name: safeText(snapshot.product_name),\n    unit_price: numberOrNull(snapshot.unit_price),\n    quantity: snapshot.quantity,\n    note: safeText(snapshot.note),\n    customer_ship_fee: numberOrNull(snapshot.customer_ship_fee),\n    deposit_amount: numberOrNull(snapshot.deposit_amount),\n    transfer_amount: numberOrNull(snapshot.transfer_amount),\n    needs_product_lookup: Boolean(safeText(snapshot.product_query) && !numberOrNull(snapshot.product_id)),\n    needs_city_lookup: Boolean(safeText(snapshot.city_name) && !numberOrNull(snapshot.city_id)),\n    needs_district_lookup: Boolean(safeText(snapshot.district_name) && !numberOrNull(snapshot.district_id)),\n    reply_text: replyText,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        416
+      ],
+      "name": "Code Merge AddOrder Draft"
+    },
+    {
+      "id": "64b8ce3c-6e1c-4adc-a318-f33e014b9d6a",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  token_key,\n  app_id,\n  business_id,\n  access_token as nhanh_access_token,\n  secret_key,\n  expires_at,\n  permissions\nfrom public.nhanh_api_tokens\nwhere token_key = 'nhanh_main'\norder by updated_at desc nulls last\nlimit 1;"
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1920,
+        416
+      ],
+      "name": "PG Load AddOrder Nhanh Token",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "18405999-de44-4af8-8f70-b99d8511d40b",
+      "parameters": {
+        "jsCode": "const base = $('Code Merge AddOrder Draft').first().json;\nconst row = $input.first()?.json || {};\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst numberOrNull = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n};\nconst nhanhAccessToken = safeText(row.nhanh_access_token);\nconst nhanhAppId = numberOrNull(row.app_id);\nconst nhanhBusinessId = numberOrNull(row.business_id);\nconst canUseNhanh = Boolean(nhanhAccessToken && nhanhAppId && nhanhBusinessId);\nlet replyText = safeText(base.reply_text);\n\nif (!replyText && !canUseNhanh && (base.needs_product_lookup || base.needs_city_lookup || base.needs_district_lookup || base.addorder_action === 'confirm')) {\n  replyText = 'Thiếu cấu hình Nhanh.';\n}\n\nreturn [{\n  json: {\n    ...base,\n    nhanh_access_token: nhanhAccessToken,\n    nhanh_app_id: nhanhAppId,\n    nhanh_business_id: nhanhBusinessId,\n    nhanh_product_list_url: canUseNhanh ? ('https://pos.open.nhanh.vn/v3.0/product/list?appId=' + nhanhAppId + '&businessId=' + nhanhBusinessId) : '',\n    nhanh_location_url: canUseNhanh ? ('https://pos.open.nhanh.vn/v3.0/shipping/location?appId=' + nhanhAppId + '&businessId=' + nhanhBusinessId) : '',\n    nhanh_order_add_url: canUseNhanh ? ('https://pos.open.nhanh.vn/v3.0/order/add?appId=' + nhanhAppId + '&businessId=' + nhanhBusinessId) : '',\n    product_lookup_body: canUseNhanh && base.needs_product_lookup && !replyText ? {\n      filters: { name: base.product_query },\n      paginator: { size: 5, sort: { id: 'desc' } },\n    } : null,\n    city_lookup_body: canUseNhanh && base.needs_city_lookup && !replyText ? {\n      filters: { locationVersion: 'v1', type: 'CITY' },\n    } : null,\n    district_lookup_body: canUseNhanh && base.needs_district_lookup && !replyText && base.city_id ? {\n      filters: { locationVersion: 'v1', type: 'DISTRICT', parentId: base.city_id },\n    } : null,\n    reply_text: replyText,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        416
+      ],
+      "name": "Code Build AddOrder Request"
+    },
+    {
+      "id": "95543dea-b49c-48ba-b2e5-78352760ab29",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needs_product_lookup === true && !!$json.product_lookup_body && !String($json.reply_text || \"\").trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2400,
+        416
+      ],
+      "name": "If Needs Product Lookup"
+    },
+    {
+      "id": "22a3d6fb-2af5-4451-91af-102a29f7f593",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.nhanh_product_list_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.nhanh_access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.product_lookup_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2640,
+        320
+      ],
+      "name": "HTTP Nhanh Product List AddOrder",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "2b949e16-98de-40f5-b1b6-ffde13dc9a40",
+      "parameters": {
+        "jsCode": "const base = $('If Needs Product Lookup').first().json;\nconst payload = $input.first()?.json || {};\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s/-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\nconst numberOrNull = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n};\n\nlet replyText = safeText(base.reply_text);\nconst root = payload?.data ?? payload ?? {};\nconst rawItems = Array.isArray(root?.data) ? root.data : Array.isArray(root?.products) ? root.products : [];\nconst query = normalizeText(base.product_query);\nconst items = rawItems.map((item) => {\n  const name = safeText(item.name);\n  const code = safeText(item.code);\n  const barcode = safeText(item.barcode);\n  const price = numberOrNull(item?.prices?.retail ?? item?.prices?.price ?? item.price);\n  const score = (() => {\n    const normalizedName = normalizeText(name);\n    const normalizedCode = normalizeText(code);\n    const normalizedBarcode = normalizeText(barcode);\n    if (query && (normalizedCode === query || normalizedBarcode === query)) return 100;\n    if (query && normalizedName === query) return 98;\n    if (query && normalizedName.includes(query) && normalizedCode.includes(query)) return 92;\n    if (query && (normalizedName.includes(query) || normalizedCode.includes(query))) return 88;\n    if (query && query.includes(normalizedCode) && normalizedCode) return 86;\n    return 0;\n  })();\n  return {\n    id: numberOrNull(item.id),\n    code,\n    name,\n    price,\n    score,\n  };\n}).filter((item) => item.id).sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name, 'vi'));\n\nlet chosen = null;\nif (items.length === 1) {\n  chosen = items[0];\n} else if (items.length > 1 && items[0].score >= 98 && items[0].score > items[1].score) {\n  chosen = items[0];\n} else if (items.length > 1 && items[0].score >= 92 && items[1].score <= 80) {\n  chosen = items[0];\n}\n\nif (!replyText) {\n  if (payload.error || (typeof payload.code !== 'undefined' && Number(payload.code) !== 1 && !items.length)) {\n    replyText = safeText(payload.message || payload.error || 'Không tìm được sản phẩm trên Nhanh.');\n  } else if (!items.length) {\n    replyText = 'Không tìm thấy sản phẩm khớp với \"' + base.product_query + '\".';\n  } else if (!chosen) {\n    const lines = ['Sản phẩm chưa rõ:'];\n    for (const item of items.slice(0, 5)) {\n      lines.push([item.code, item.name].filter(Boolean).join(' | '));\n    }\n    replyText = lines.join('\\n');\n  }\n}\n\nreturn [{\n  json: {\n    ...base,\n    product_search_result: items,\n    product_id: chosen?.id ?? base.product_id ?? null,\n    product_code: chosen?.code ?? base.product_code ?? '',\n    product_name: chosen?.name ?? base.product_name ?? '',\n    unit_price: chosen?.price ?? base.unit_price ?? null,\n    needs_product_lookup: false,\n    reply_text: replyText,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        320
+      ],
+      "name": "Code Resolve AddOrder Product"
+    },
+    {
+      "id": "176024bb-199f-446e-933b-ba784d400f4c",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needs_city_lookup === true && !!$json.city_lookup_body && !String($json.reply_text || \"\").trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3120,
+        416
+      ],
+      "name": "If Needs City Lookup"
+    },
+    {
+      "id": "92b7d06d-e47b-42f8-bb5b-50712d150591",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.nhanh_location_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.nhanh_access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.city_lookup_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        3360,
+        320
+      ],
+      "name": "HTTP Nhanh Shipping City AddOrder",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "049fc678-9bd7-402c-9903-b323e60bff69",
+      "parameters": {
+        "jsCode": "const base = $('If Needs City Lookup').first().json;\nconst payload = $input.first()?.json || {};\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s/-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\nconst aliasMap = {\n  hcm: 'ho chi minh',\n  tphcm: 'ho chi minh',\n  'tp hcm': 'ho chi minh',\n  'tp ho chi minh': 'ho chi minh',\n  hn: 'ha noi',\n  'tp ha noi': 'ha noi',\n  dn: 'da nang',\n  'tp da nang': 'da nang',\n};\nconst canonical = (value) => aliasMap[normalizeText(value)] || normalizeText(value).replace(/^tp\\s+/, '').replace(/^tinh\\s+/, '');\nconst items = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.result?.data) ? payload.result.data : [];\nconst query = canonical(base.city_name);\nconst mapped = items.map((item) => ({\n  id: Number(item.id || 0) || null,\n  name: safeText(item.name),\n  otherName: safeText(item.otherName),\n  score: (() => {\n    const name = canonical(item.name);\n    const other = canonical(item.otherName);\n    if (name === query || other === query) return 100;\n    if (name.includes(query) || query.includes(name) || other.includes(query)) return 90;\n    return 0;\n  })(),\n})).filter((item) => item.id).sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name, 'vi'));\nlet chosen = null;\nif (mapped.length === 1) chosen = mapped[0];\nelse if (mapped.length > 1 && mapped[0].score >= 100 && mapped[0].score > mapped[1].score) chosen = mapped[0];\nelse if (mapped.length > 1 && mapped[0].score >= 90 && mapped[1].score < 90) chosen = mapped[0];\nlet replyText = safeText(base.reply_text);\nif (!replyText) {\n  if (payload.error || (typeof payload.code !== 'undefined' && Number(payload.code) !== 1 && !mapped.length)) {\n    replyText = safeText(payload.message || payload.error || 'Không tra được tỉnh/thành trên Nhanh.');\n  } else if (!mapped.length) {\n    replyText = 'Không tìm thấy tỉnh/thành khớp với \"' + base.city_name + '\".';\n  } else if (!chosen) {\n    replyText = 'Tỉnh/thành chưa rõ: ' + mapped.slice(0, 5).map((item) => item.name).join(', ');\n  }\n}\nreturn [{\n  json: {\n    ...base,\n    city_id: chosen?.id ?? base.city_id ?? null,\n    city_name: chosen?.name ?? base.city_name ?? '',\n    needs_city_lookup: false,\n    location_search_result: {\n      ...(base.location_search_result || {}),\n      city_candidates: mapped,\n    },\n    reply_text: replyText,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        320
+      ],
+      "name": "Code Resolve AddOrder City"
+    },
+    {
+      "id": "cfeb73d4-7d44-4853-ad2d-5c2e06cdc77b",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needs_district_lookup === true && !!$json.city_id && !String($json.reply_text || \"\").trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3840,
+        416
+      ],
+      "name": "If Needs District Lookup"
+    },
+    {
+      "id": "576d747c-f63b-401b-80f5-fd23324699a3",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.nhanh_location_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.nhanh_access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ ({ filters: { locationVersion: \"v1\", type: \"DISTRICT\", parentId: $json.city_id } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        4080,
+        320
+      ],
+      "name": "HTTP Nhanh Shipping District AddOrder",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "9ee0c712-9cc0-4ba0-8997-7dca9c688df8",
+      "parameters": {
+        "jsCode": "const base = $('If Needs District Lookup').first().json;\nconst payload = $input.first()?.json || {};\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s/-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim()\n  .replace(/^(quan|q|huyen|h)\\s+/, '');\nconst items = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.result?.data) ? payload.result.data : [];\nconst query = normalizeText(base.district_name);\nconst mapped = items.map((item) => ({\n  id: Number(item.id || 0) || null,\n  name: safeText(item.name),\n  otherName: safeText(item.otherName),\n  score: (() => {\n    const name = normalizeText(item.name);\n    const other = normalizeText(item.otherName);\n    if (name === query || other === query) return 100;\n    if (name.includes(query) || query.includes(name) || other.includes(query)) return 90;\n    return 0;\n  })(),\n})).filter((item) => item.id).sort((a, b) => (b.score - a.score) || a.name.localeCompare(b.name, 'vi'));\nlet chosen = null;\nif (mapped.length === 1) chosen = mapped[0];\nelse if (mapped.length > 1 && mapped[0].score >= 100 && mapped[0].score > mapped[1].score) chosen = mapped[0];\nelse if (mapped.length > 1 && mapped[0].score >= 90 && mapped[1].score < 90) chosen = mapped[0];\nlet replyText = safeText(base.reply_text);\nif (!replyText) {\n  if (payload.error || (typeof payload.code !== 'undefined' && Number(payload.code) !== 1 && !mapped.length)) {\n    replyText = safeText(payload.message || payload.error || 'Không tra được quận/huyện trên Nhanh.');\n  } else if (!mapped.length) {\n    replyText = 'Không tìm thấy quận/huyện khớp với \"' + base.district_name + '\".';\n  } else if (!chosen) {\n    replyText = 'Quận/huyện chưa rõ: ' + mapped.slice(0, 5).map((item) => item.name).join(', ');\n  }\n}\nreturn [{\n  json: {\n    ...base,\n    district_id: chosen?.id ?? base.district_id ?? null,\n    district_name: chosen?.name ?? base.district_name ?? '',\n    needs_district_lookup: false,\n    location_search_result: {\n      ...(base.location_search_result || {}),\n      district_candidates: mapped,\n    },\n    reply_text: replyText,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4320,
+        320
+      ],
+      "name": "Code Resolve AddOrder District"
+    },
+    {
+      "id": "30b80776-4731-4cb9-b08e-3dfc1302e288",
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json || {};\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst digitsOnly = (value) => String(value || '').replace(/[^\\d]/g, '');\nconst numberOrNull = (value) => {\n  if (value === null || value === undefined || value === '') return null;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : null;\n};\nconst formatMoney = (value) => {\n  const parsed = numberOrNull(value);\n  if (parsed === null) return '';\n  return Math.round(parsed).toLocaleString('vi-VN') + 'đ';\n};\nconst buildSummary = (title, snapshot, missing = [], ready = false) => {\n  const lines = [title];\n  if (snapshot.customer_name || snapshot.phone) {\n    lines.push('Khách: ' + [snapshot.customer_name, snapshot.phone].filter(Boolean).join(' | '));\n  }\n  if (snapshot.product_name || snapshot.product_query) {\n    const productTitle = snapshot.product_name || snapshot.product_query;\n    lines.push('Sản phẩm: ' + productTitle + ' x' + snapshot.quantity);\n  }\n  const addressParts = [snapshot.address, snapshot.district_name, snapshot.city_name].filter(Boolean);\n  if (addressParts.length) lines.push('Địa chỉ: ' + addressParts.join(', '));\n  if (numberOrNull(snapshot.unit_price) !== null) lines.push('Giá: ' + formatMoney(snapshot.unit_price));\n  if (safeText(snapshot.note)) lines.push('Ghi chú: ' + snapshot.note);\n  if (missing.length) lines.push('Thiếu: ' + missing.join(', ') + '.');\n  if (ready) lines.push('Dùng /addorder confirm t-' + row.ticket_id + ' để chốt.');\n  return lines.join('\\n');\n};\n\nconst snapshot = {\n  customer_name: safeText(row.customer_name),\n  phone: digitsOnly(row.phone),\n  address: safeText(row.address),\n  city_name: safeText(row.city_name),\n  city_id: numberOrNull(row.city_id),\n  district_name: safeText(row.district_name),\n  district_id: numberOrNull(row.district_id),\n  ward_name: safeText(row.ward_name),\n  ward_id: numberOrNull(row.ward_id),\n  location_version: safeText(row.location_version) || 'v1',\n  product_query: safeText(row.product_query),\n  product_id: numberOrNull(row.product_id),\n  product_code: safeText(row.product_code),\n  product_name: safeText(row.product_name),\n  unit_price: numberOrNull(row.unit_price),\n  quantity: Math.max(1, Math.round(numberOrNull(row.quantity) || 1)),\n  note: safeText(row.note),\n  customer_ship_fee: numberOrNull(row.customer_ship_fee),\n  deposit_amount: numberOrNull(row.deposit_amount),\n  transfer_amount: numberOrNull(row.transfer_amount),\n};\n\nlet replyText = safeText(row.reply_text);\nlet orderDraftStatus = safeText(row.order_draft_status);\nlet auditActionType = 'order_draft_upserted';\nlet canSubmitOrder = false;\nconst missing = [];\nif (!snapshot.customer_name) missing.push('tên khách');\nif (!snapshot.phone) missing.push('SĐT');\nif (!snapshot.address) missing.push('địa chỉ');\nif (!snapshot.city_id) missing.push('tỉnh/thành');\nif (!snapshot.district_id) missing.push('quận/huyện');\nif (!snapshot.product_id) missing.push('sản phẩm');\nif (numberOrNull(snapshot.unit_price) === null) missing.push('giá bán');\nif (!snapshot.quantity) missing.push('số lượng');\n\nif (row.addorder_action === 'cancel') {\n  orderDraftStatus = 'cancelled';\n  auditActionType = 'order_draft_cancelled';\n  replyText = replyText || ('Đã hủy draft đơn T-' + row.ticket_id + '.');\n} else if (replyText) {\n  orderDraftStatus = 'needs_clarification';\n  auditActionType = row.addorder_action === 'confirm' ? 'order_draft_confirm_blocked' : 'order_draft_upserted';\n} else if (row.addorder_action === 'show') {\n  if (safeText(row.draft_row?.status) === 'created' || safeText(row.order_draft_status) === 'created') {\n    orderDraftStatus = 'created';\n    replyText = buildSummary('Đơn đã tạo cho T-' + row.ticket_id + '.', snapshot, [], false);\n    if (row.nhanh_order_id) replyText += '\\nMã Nhanh: ' + row.nhanh_order_id;\n    if (safeText(row.created_order_tracking_url)) replyText += '\\nTracking: ' + row.created_order_tracking_url;\n    auditActionType = 'order_draft_viewed';\n  } else {\n    orderDraftStatus = missing.length ? 'needs_clarification' : 'ready_to_confirm';\n    replyText = buildSummary('Draft đơn T-' + row.ticket_id + '.', snapshot, missing, orderDraftStatus === 'ready_to_confirm');\n    auditActionType = 'order_draft_viewed';\n  }\n} else if (missing.length) {\n  orderDraftStatus = 'needs_clarification';\n  replyText = buildSummary(\n    row.addorder_action === 'reset' ? ('Đã reset draft T-' + row.ticket_id + '.') : ('Đã cập nhật draft T-' + row.ticket_id + '.'),\n    snapshot,\n    missing,\n    false,\n  );\n  auditActionType = row.addorder_action === 'confirm' ? 'order_draft_confirm_blocked' : 'order_draft_upserted';\n} else {\n  orderDraftStatus = 'ready_to_confirm';\n  auditActionType = row.addorder_action === 'confirm' ? 'order_draft_confirm_requested' : 'order_draft_upserted';\n  if (row.addorder_action === 'confirm') {\n    canSubmitOrder = true;\n    replyText = 'Đang tạo đơn trên Nhanh...';\n  } else if (row.addorder_action === 'reset') {\n    replyText = buildSummary('Đã reset draft T-' + row.ticket_id + '.', snapshot, [], true);\n  } else {\n    replyText = buildSummary('Đã cập nhật draft T-' + row.ticket_id + '.', snapshot, [], true);\n  }\n}\n\nif ((snapshot.deposit_amount || snapshot.transfer_amount) && row.addorder_action !== 'cancel') {\n  replyText += '\\nLưu ý: cọc/chuyển khoản mới chỉ lưu draft, chưa đẩy sang Nhanh.';\n}\n\nconst appOrderId = safeText(row.app_order_id) || ('zalo-t' + row.ticket_id + '-' + Date.now());\nconst orderAddPayload = canSubmitOrder ? {\n  info: {\n    type: 1,\n    description: snapshot.note || ('Tạo từ ticket T-' + row.ticket_id),\n  },\n  channel: {\n    appOrderId,\n    sourceName: 'Zalo /addorder',\n  },\n  shippingAddress: {\n    name: snapshot.customer_name,\n    mobile: snapshot.phone,\n    address: snapshot.address,\n    cityId: snapshot.city_id,\n    districtId: snapshot.district_id,\n    locationVersion: snapshot.location_version,\n    ...(snapshot.ward_id ? { wardId: snapshot.ward_id } : {}),\n  },\n  products: [\n    {\n      id: snapshot.product_id,\n      price: snapshot.unit_price,\n      quantity: snapshot.quantity,\n      ...(snapshot.product_name ? { description: snapshot.product_name } : {}),\n    },\n  ],\n} : {};\n\nreturn [{\n  json: {\n    ...row,\n    draft_snapshot: snapshot,\n    app_order_id: appOrderId,\n    order_add_request_body: orderAddPayload,\n    can_submit_order: canSubmitOrder,\n    should_save_draft: row.addorder_action !== 'show',\n    order_draft_status: orderDraftStatus,\n    audit_action_type: auditActionType,\n    reply_text: replyText.trim(),\n    handoff_queue_id: row.ticket_id || null,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        416
+      ],
+      "name": "Code Finalize AddOrder Draft"
+    },
+    {
+      "id": "64e209a9-726d-4019-902e-63f785793594",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.addorder_action === \"confirm\" && $json.can_submit_order === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4800,
+        416
+      ],
+      "name": "If AddOrder Confirm Ready"
+    },
+    {
+      "id": "9b2f457a-c1f1-473e-be7e-6c1e4177649a",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.nhanh_order_add_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.nhanh_access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.order_add_request_body }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        5040,
+        320
+      ],
+      "name": "HTTP Nhanh Order Add",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "e387e15a-a25c-49a9-90b0-25e9531b5f84",
+      "parameters": {
+        "jsCode": "const base = $('Code Finalize AddOrder Draft').first().json;\nconst payload = $input.first()?.json || {};\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst data = payload?.data ?? payload?.result?.data ?? payload?.result ?? {};\nlet replyText = '';\nlet orderDraftStatus = 'failed';\nlet auditActionType = 'order_created_failed';\nlet nhanhOrderId = data?.id ?? null;\nlet trackingUrl = safeText(data?.trackingUrl);\nlet lastErrorCode = '';\nlet lastError = '';\n\nif (payload.error || (typeof payload.code !== 'undefined' && Number(payload.code) !== 1)) {\n  lastErrorCode = String(payload.code ?? payload.error_code ?? 'NHANH_API_ERROR');\n  lastError = safeText(payload.message || payload.error || 'Tạo đơn trên Nhanh thất bại.');\n  replyText = lastError;\n} else {\n  orderDraftStatus = 'created';\n  auditActionType = 'order_created';\n  replyText = 'Đã tạo đơn Nhanh ' + nhanhOrderId + '.';\n  if (trackingUrl) replyText += '\\nTracking: ' + trackingUrl;\n}\n\nreturn [{\n  json: {\n    ...base,\n    nhanh_order_id: nhanhOrderId,\n    created_order_tracking_url: trackingUrl,\n    order_draft_status: orderDraftStatus,\n    audit_action_type: auditActionType,\n    reply_text: replyText,\n    last_error_code: lastErrorCode,\n    last_error: lastError,\n    nhanh_response: payload,\n    confirmed_at: orderDraftStatus === 'created' ? new Date().toISOString() : '',\n    confirmed_by_user_id: orderDraftStatus === 'created' ? (base.sender_id || '') : '',\n    confirmed_by_display_name: orderDraftStatus === 'created' ? (base.actor_display_name || base.sender_display_name || '') : '',\n    handoff_queue_id: base.ticket_id || null,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        320
+      ],
+      "name": "Code Normalize AddOrder Submit"
+    },
+    {
+      "id": "176e06c1-9b20-4394-928f-8a7206de20e9",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\ninsert into public.order_drafts (\n  handoff_queue_id,\n  customer_phase_state_id,\n  oa_id,\n  group_id,\n  status,\n  source_command_text,\n  customer_name,\n  phone,\n  address,\n  city_name,\n  city_id,\n  district_name,\n  district_id,\n  ward_name,\n  ward_id,\n  location_version,\n  product_query,\n  product_id,\n  product_code,\n  product_name,\n  unit_price,\n  quantity,\n  note,\n  customer_ship_fee,\n  deposit_amount,\n  transfer_amount,\n  raw_ai_patch,\n  merged_snapshot,\n  product_search_result,\n  location_search_result,\n  order_add_payload,\n  app_order_id,\n  nhanh_order_id,\n  nhanh_tracking_url,\n  nhanh_response,\n  last_error_code,\n  last_error,\n  confirmed_at,\n  confirmed_by_user_id,\n  confirmed_by_display_name,\n  cancelled_at,\n  cancelled_by_user_id,\n  cancelled_by_display_name\n)\nvalues (\n  $1::bigint,\n  nullif($2::text, '')::bigint,\n  nullif($3::text, ''),\n  nullif($4::text, ''),\n  $5::text,\n  nullif($6::text, ''),\n  nullif($7::text, ''),\n  nullif($8::text, ''),\n  nullif($9::text, ''),\n  nullif($10::text, ''),\n  nullif($11::text, '')::bigint,\n  nullif($12::text, ''),\n  nullif($13::text, '')::bigint,\n  nullif($14::text, ''),\n  nullif($15::text, '')::bigint,\n  coalesce(nullif($16::text, ''), 'v1'),\n  nullif($17::text, ''),\n  nullif($18::text, '')::bigint,\n  nullif($19::text, ''),\n  nullif($20::text, ''),\n  nullif($21::text, '')::numeric,\n  greatest(coalesce(nullif($22::text, '')::integer, 1), 1),\n  nullif($23::text, ''),\n  nullif($24::text, '')::numeric,\n  nullif($25::text, '')::numeric,\n  nullif($26::text, '')::numeric,\n  coalesce($27::jsonb, '{}'::jsonb),\n  coalesce($28::jsonb, '{}'::jsonb),\n  coalesce($29::jsonb, '[]'::jsonb),\n  coalesce($30::jsonb, '{}'::jsonb),\n  coalesce($31::jsonb, '{}'::jsonb),\n  nullif($32::text, ''),\n  nullif($33::text, '')::bigint,\n  nullif($34::text, ''),\n  coalesce($35::jsonb, '{}'::jsonb),\n  nullif($36::text, ''),\n  nullif($37::text, ''),\n  nullif($38::text, '')::timestamptz,\n  nullif($39::text, ''),\n  nullif($40::text, ''),\n  nullif($41::text, '')::timestamptz,\n  nullif($42::text, ''),\n  nullif($43::text, '')\n)\non conflict (handoff_queue_id) do update set\n  customer_phase_state_id = excluded.customer_phase_state_id,\n  oa_id = excluded.oa_id,\n  group_id = excluded.group_id,\n  status = excluded.status,\n  source_command_text = excluded.source_command_text,\n  customer_name = excluded.customer_name,\n  phone = excluded.phone,\n  address = excluded.address,\n  city_name = excluded.city_name,\n  city_id = excluded.city_id,\n  district_name = excluded.district_name,\n  district_id = excluded.district_id,\n  ward_name = excluded.ward_name,\n  ward_id = excluded.ward_id,\n  location_version = excluded.location_version,\n  product_query = excluded.product_query,\n  product_id = excluded.product_id,\n  product_code = excluded.product_code,\n  product_name = excluded.product_name,\n  unit_price = excluded.unit_price,\n  quantity = excluded.quantity,\n  note = excluded.note,\n  customer_ship_fee = excluded.customer_ship_fee,\n  deposit_amount = excluded.deposit_amount,\n  transfer_amount = excluded.transfer_amount,\n  raw_ai_patch = excluded.raw_ai_patch,\n  merged_snapshot = excluded.merged_snapshot,\n  product_search_result = excluded.product_search_result,\n  location_search_result = excluded.location_search_result,\n  order_add_payload = excluded.order_add_payload,\n  app_order_id = coalesce(excluded.app_order_id, public.order_drafts.app_order_id),\n  nhanh_order_id = coalesce(excluded.nhanh_order_id, public.order_drafts.nhanh_order_id),\n  nhanh_tracking_url = coalesce(excluded.nhanh_tracking_url, public.order_drafts.nhanh_tracking_url),\n  nhanh_response = case\n    when excluded.nhanh_response = '{}'::jsonb then public.order_drafts.nhanh_response\n    else excluded.nhanh_response\n  end,\n  last_error_code = excluded.last_error_code,\n  last_error = excluded.last_error,\n  confirmed_at = coalesce(excluded.confirmed_at, public.order_drafts.confirmed_at),\n  confirmed_by_user_id = coalesce(excluded.confirmed_by_user_id, public.order_drafts.confirmed_by_user_id),\n  confirmed_by_display_name = coalesce(excluded.confirmed_by_display_name, public.order_drafts.confirmed_by_display_name),\n  cancelled_at = case when excluded.status = 'cancelled' then excluded.cancelled_at else null end,\n  cancelled_by_user_id = case when excluded.status = 'cancelled' then excluded.cancelled_by_user_id else null end,\n  cancelled_by_display_name = case when excluded.status = 'cancelled' then excluded.cancelled_by_display_name else null end\nreturning id, handoff_queue_id, status, app_order_id, nhanh_order_id, nhanh_tracking_url, updated_at;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.ticket_id || '',\n  $json.customer_phase_state_id || '',\n  $json.oa_id || '',\n  $json.group_id || '',\n  $json.order_draft_status || 'failed',\n  $json.command_text || '',\n  $json.customer_name || '',\n  $json.phone || '',\n  $json.address || '',\n  $json.city_name || '',\n  $json.city_id || '',\n  $json.district_name || '',\n  $json.district_id || '',\n  $json.ward_name || '',\n  $json.ward_id || '',\n  'v1',\n  $json.product_query || '',\n  $json.product_id || '',\n  $json.product_code || '',\n  $json.product_name || '',\n  $json.unit_price ?? '',\n  $json.quantity || 1,\n  $json.note || '',\n  $json.customer_ship_fee ?? '',\n  $json.deposit_amount ?? '',\n  $json.transfer_amount ?? '',\n  JSON.stringify($json.parsed_patch || $json.raw_ai_patch || {}),\n  JSON.stringify($json.draft_snapshot || {}),\n  JSON.stringify($json.product_search_result || []),\n  JSON.stringify($json.location_search_result || {}),\n  JSON.stringify($json.order_add_request_body || {}),\n  $json.app_order_id || '',\n  $json.nhanh_order_id || '',\n  $json.created_order_tracking_url || '',\n  JSON.stringify($json.nhanh_response || {}),\n  $json.last_error_code || '',\n  $json.last_error || '',\n  $json.confirmed_at || '',\n  $json.confirmed_by_user_id || '',\n  $json.confirmed_by_display_name || '',\n  '',\n  '',\n  ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5520,
+        320
+      ],
+      "name": "PG Upsert Order Draft Final",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "03c8f6c6-ca05-4267-a41b-dfdbe855274a",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.should_save_draft === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        5040,
+        512
+      ],
+      "name": "If AddOrder Should Save Draft"
+    },
+    {
+      "id": "62d13de4-3bcf-448d-ab34-4cf560c9f8ea",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "\ninsert into public.order_drafts (\n  handoff_queue_id,\n  customer_phase_state_id,\n  oa_id,\n  group_id,\n  status,\n  source_command_text,\n  customer_name,\n  phone,\n  address,\n  city_name,\n  city_id,\n  district_name,\n  district_id,\n  ward_name,\n  ward_id,\n  location_version,\n  product_query,\n  product_id,\n  product_code,\n  product_name,\n  unit_price,\n  quantity,\n  note,\n  customer_ship_fee,\n  deposit_amount,\n  transfer_amount,\n  raw_ai_patch,\n  merged_snapshot,\n  product_search_result,\n  location_search_result,\n  order_add_payload,\n  app_order_id,\n  nhanh_order_id,\n  nhanh_tracking_url,\n  nhanh_response,\n  last_error_code,\n  last_error,\n  confirmed_at,\n  confirmed_by_user_id,\n  confirmed_by_display_name,\n  cancelled_at,\n  cancelled_by_user_id,\n  cancelled_by_display_name\n)\nvalues (\n  $1::bigint,\n  nullif($2::text, '')::bigint,\n  nullif($3::text, ''),\n  nullif($4::text, ''),\n  $5::text,\n  nullif($6::text, ''),\n  nullif($7::text, ''),\n  nullif($8::text, ''),\n  nullif($9::text, ''),\n  nullif($10::text, ''),\n  nullif($11::text, '')::bigint,\n  nullif($12::text, ''),\n  nullif($13::text, '')::bigint,\n  nullif($14::text, ''),\n  nullif($15::text, '')::bigint,\n  coalesce(nullif($16::text, ''), 'v1'),\n  nullif($17::text, ''),\n  nullif($18::text, '')::bigint,\n  nullif($19::text, ''),\n  nullif($20::text, ''),\n  nullif($21::text, '')::numeric,\n  greatest(coalesce(nullif($22::text, '')::integer, 1), 1),\n  nullif($23::text, ''),\n  nullif($24::text, '')::numeric,\n  nullif($25::text, '')::numeric,\n  nullif($26::text, '')::numeric,\n  coalesce($27::jsonb, '{}'::jsonb),\n  coalesce($28::jsonb, '{}'::jsonb),\n  coalesce($29::jsonb, '[]'::jsonb),\n  coalesce($30::jsonb, '{}'::jsonb),\n  coalesce($31::jsonb, '{}'::jsonb),\n  nullif($32::text, ''),\n  nullif($33::text, '')::bigint,\n  nullif($34::text, ''),\n  coalesce($35::jsonb, '{}'::jsonb),\n  nullif($36::text, ''),\n  nullif($37::text, ''),\n  nullif($38::text, '')::timestamptz,\n  nullif($39::text, ''),\n  nullif($40::text, ''),\n  nullif($41::text, '')::timestamptz,\n  nullif($42::text, ''),\n  nullif($43::text, '')\n)\non conflict (handoff_queue_id) do update set\n  customer_phase_state_id = excluded.customer_phase_state_id,\n  oa_id = excluded.oa_id,\n  group_id = excluded.group_id,\n  status = excluded.status,\n  source_command_text = excluded.source_command_text,\n  customer_name = excluded.customer_name,\n  phone = excluded.phone,\n  address = excluded.address,\n  city_name = excluded.city_name,\n  city_id = excluded.city_id,\n  district_name = excluded.district_name,\n  district_id = excluded.district_id,\n  ward_name = excluded.ward_name,\n  ward_id = excluded.ward_id,\n  location_version = excluded.location_version,\n  product_query = excluded.product_query,\n  product_id = excluded.product_id,\n  product_code = excluded.product_code,\n  product_name = excluded.product_name,\n  unit_price = excluded.unit_price,\n  quantity = excluded.quantity,\n  note = excluded.note,\n  customer_ship_fee = excluded.customer_ship_fee,\n  deposit_amount = excluded.deposit_amount,\n  transfer_amount = excluded.transfer_amount,\n  raw_ai_patch = excluded.raw_ai_patch,\n  merged_snapshot = excluded.merged_snapshot,\n  product_search_result = excluded.product_search_result,\n  location_search_result = excluded.location_search_result,\n  order_add_payload = excluded.order_add_payload,\n  app_order_id = coalesce(excluded.app_order_id, public.order_drafts.app_order_id),\n  nhanh_order_id = coalesce(excluded.nhanh_order_id, public.order_drafts.nhanh_order_id),\n  nhanh_tracking_url = coalesce(excluded.nhanh_tracking_url, public.order_drafts.nhanh_tracking_url),\n  nhanh_response = case\n    when excluded.nhanh_response = '{}'::jsonb then public.order_drafts.nhanh_response\n    else excluded.nhanh_response\n  end,\n  last_error_code = excluded.last_error_code,\n  last_error = excluded.last_error,\n  confirmed_at = coalesce(excluded.confirmed_at, public.order_drafts.confirmed_at),\n  confirmed_by_user_id = coalesce(excluded.confirmed_by_user_id, public.order_drafts.confirmed_by_user_id),\n  confirmed_by_display_name = coalesce(excluded.confirmed_by_display_name, public.order_drafts.confirmed_by_display_name),\n  cancelled_at = case when excluded.status = 'cancelled' then excluded.cancelled_at else null end,\n  cancelled_by_user_id = case when excluded.status = 'cancelled' then excluded.cancelled_by_user_id else null end,\n  cancelled_by_display_name = case when excluded.status = 'cancelled' then excluded.cancelled_by_display_name else null end\nreturning id, handoff_queue_id, status, app_order_id, nhanh_order_id, nhanh_tracking_url, updated_at;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.ticket_id || '',\n  $json.customer_phase_state_id || '',\n  $json.oa_id || '',\n  $json.group_id || '',\n  $json.order_draft_status || 'draft',\n  $json.command_text || '',\n  $json.customer_name || '',\n  $json.phone || '',\n  $json.address || '',\n  $json.city_name || '',\n  $json.city_id || '',\n  $json.district_name || '',\n  $json.district_id || '',\n  $json.ward_name || '',\n  $json.ward_id || '',\n  'v1',\n  $json.product_query || '',\n  $json.product_id || '',\n  $json.product_code || '',\n  $json.product_name || '',\n  $json.unit_price ?? '',\n  $json.quantity || 1,\n  $json.note || '',\n  $json.customer_ship_fee ?? '',\n  $json.deposit_amount ?? '',\n  $json.transfer_amount ?? '',\n  JSON.stringify($json.parsed_patch || $json.raw_ai_patch || {}),\n  JSON.stringify($json.draft_snapshot || {}),\n  JSON.stringify($json.product_search_result || []),\n  JSON.stringify($json.location_search_result || {}),\n  JSON.stringify($json.order_add_request_body || {}),\n  $json.app_order_id || '',\n  '',\n  '',\n  JSON.stringify({}),\n  '',\n  '',\n  '',\n  '',\n  '',\n  $json.order_draft_status === 'cancelled' ? new Date().toISOString() : '',\n  $json.order_draft_status === 'cancelled' ? ($json.sender_id || '') : '',\n  $json.order_draft_status === 'cancelled' ? ($json.actor_display_name || $json.sender_display_name || '') : ''\n] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5280,
+        608
+      ],
+      "name": "PG Upsert Order Draft State",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "id": "c652811c-6982-40e4-99c4-d3016fc20e20",
+      "parameters": {
+        "jsCode": "const pick = (name) => {\n  try {\n    return $(name).first().json || {};\n  } catch {\n    return {};\n  }\n};\n\nconst finalBase = pick('Code Finalize AddOrder Draft');\nconst submitBase = pick('Code Normalize AddOrder Submit');\nconst row = $input.first()?.json || {};\nconst replyText = String(submitBase.reply_text || finalBase.reply_text || row.reply_text || 'Không xử lý được /addorder.').trim();\nconst auditActionType = String(submitBase.audit_action_type || finalBase.audit_action_type || 'order_draft_replied').trim() || 'order_draft_replied';\n\nreturn [{\n  json: {\n    ...finalBase,\n    ...submitBase,\n    ...row,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: finalBase.ticket_id || row.handoff_queue_id || null,\n    order_draft_id: row.id || finalBase.order_draft_id || null,\n    order_draft_status: submitBase.order_draft_status || finalBase.order_draft_status || row.status || '',\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5760,
+        448
+      ],
+      "name": "Code Format AddOrder Reply"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code Parse AddOrder Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Parse AddOrder Command": {
+      "main": [
+        [
+          {
+            "node": "PG Load AddOrder Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Load AddOrder Context": {
+      "main": [
+        [
+          {
+            "node": "Code Build AddOrder Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build AddOrder Context": {
+      "main": [
+        [
+          {
+            "node": "If Needs AddOrder Patch Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Needs AddOrder Patch Parse": {
+      "main": [
+        [
+          {
+            "node": "AI Parse AddOrder Patch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Merge AddOrder Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model AddOrder": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Parse AddOrder Patch",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Parse AddOrder Patch": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize AddOrder Patch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Normalize AddOrder Patch": {
+      "main": [
+        [
+          {
+            "node": "Code Merge AddOrder Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Merge AddOrder Draft": {
+      "main": [
+        [
+          {
+            "node": "PG Load AddOrder Nhanh Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Load AddOrder Nhanh Token": {
+      "main": [
+        [
+          {
+            "node": "Code Build AddOrder Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build AddOrder Request": {
+      "main": [
+        [
+          {
+            "node": "If Needs Product Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Needs Product Lookup": {
+      "main": [
+        [
+          {
+            "node": "HTTP Nhanh Product List AddOrder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Needs City Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Nhanh Product List AddOrder": {
+      "main": [
+        [
+          {
+            "node": "Code Resolve AddOrder Product",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Resolve AddOrder Product": {
+      "main": [
+        [
+          {
+            "node": "If Needs City Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Needs City Lookup": {
+      "main": [
+        [
+          {
+            "node": "HTTP Nhanh Shipping City AddOrder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Needs District Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Nhanh Shipping City AddOrder": {
+      "main": [
+        [
+          {
+            "node": "Code Resolve AddOrder City",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Resolve AddOrder City": {
+      "main": [
+        [
+          {
+            "node": "If Needs District Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Needs District Lookup": {
+      "main": [
+        [
+          {
+            "node": "HTTP Nhanh Shipping District AddOrder",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Finalize AddOrder Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Nhanh Shipping District AddOrder": {
+      "main": [
+        [
+          {
+            "node": "Code Resolve AddOrder District",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Resolve AddOrder District": {
+      "main": [
+        [
+          {
+            "node": "Code Finalize AddOrder Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Finalize AddOrder Draft": {
+      "main": [
+        [
+          {
+            "node": "If AddOrder Confirm Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If AddOrder Confirm Ready": {
+      "main": [
+        [
+          {
+            "node": "HTTP Nhanh Order Add",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If AddOrder Should Save Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Nhanh Order Add": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize AddOrder Submit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Normalize AddOrder Submit": {
+      "main": [
+        [
+          {
+            "node": "PG Upsert Order Draft Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Upsert Order Draft Final": {
+      "main": [
+        [
+          {
+            "node": "Code Format AddOrder Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If AddOrder Should Save Draft": {
+      "main": [
+        [
+          {
+            "node": "PG Upsert Order Draft State",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Format AddOrder Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Upsert Order Draft State": {
+      "main": [
+        [
+          {
+            "node": "Code Format AddOrder Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,2675 @@
+{
+  "name": "ZaloWorkflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "zalo-group-gmf-router",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e65ef861-bfab-4a41-8670-9adac30c8f78",
+      "name": "Zalo Group Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        63472,
+        27088
+      ],
+      "webhookId": "738f6188-492b-4ac9-8f9c-1fedd8c22305"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body ?? $json ?? {};\nconst payload = body.data ?? body.event_data ?? body;\nconst message = payload.message && typeof payload.message === 'object' ? payload.message : {};\nconst sender = payload.sender && typeof payload.sender === 'object' ? payload.sender : {};\nconst recipient = payload.recipient && typeof payload.recipient === 'object' ? payload.recipient : {};\n\nconst rawText = payload.text ?? payload.content ?? payload.message_text ?? message.text ?? '';\nconst text = String(rawText || '').trim();\nconst mentionUserIdsFromText = Array.from(\n  text.matchAll(/(?:\\[@\\s*|@)(\\d{5,})(?:\\])?/g),\n  (match) => String(match[1] || '').trim()\n).filter(Boolean);\nconst mentionSources = [\n  payload.mentions,\n  payload.message_mentions,\n  payload.mention_data,\n  message.mentions,\n  message.message_mentions,\n  message.mention_data,\n];\nconst mentionUserIdsFromPayload = [];\nfor (const source of mentionSources) {\n  if (!source) continue;\n  const items = Array.isArray(source) ? source : [source];\n  for (const item of items) {\n    const userId = String(item?.uid ?? item?.user_id ?? item?.id ?? item?.userid ?? '').trim();\n    if (userId) mentionUserIdsFromPayload.push(userId);\n  }\n}\nconst mentionUserIds = [...new Set([...mentionUserIdsFromPayload, ...mentionUserIdsFromText])];\nconst eventName = String(body.event_name ?? body.event ?? payload.event_name ?? payload.event_type ?? '').trim();\nconst loweredEvent = eventName.toLowerCase();\n\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s\\/-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst normalizedText = normalizeText(text);\n\nlet normalizedEventType = 'unknown';\nif (loweredEvent.includes('join') || loweredEvent.includes('invite')) {\n  normalizedEventType = 'member_joined';\n} else if (loweredEvent.includes('remove') || loweredEvent.includes('leave')) {\n  normalizedEventType = 'member_removed';\n} else if (loweredEvent.includes('role') || loweredEvent.includes('admin')) {\n  normalizedEventType = 'role_changed';\n} else if (text || loweredEvent.includes('message') || loweredEvent.includes('group_text')) {\n  normalizedEventType = 'group_message';\n}\n\nconst looksLikeOperationalMessage = [\n  /^\\//,\n  /(?:^|\\s)(?:ticket|don)(?:\\s|$)/,\n  /ticket ao|ticket ảo/,\n  /help|huong dan|co lenh gi|xem lenh|menu/,\n  /xem thanh vien|danh sach thanh vien|danh sach member|member cho duyet|pending member|ai dang cho duyet|xem pending|xem member/,\n  /phe duyet|duyet member|duyet thanh vien|approve member|approve thanh vien|cho vao|kich hoat member|kich hoat thanh vien/,\n  /(?:^|\\s)duyet(?:\\s|$)/,\n  /them thanh vien|moi thanh vien|add member|invite member|moi vao nhom|them nguoi vao nhom|link vao nhom|cach them thanh vien/,\n  /xem tat ca(?:\\s+cac)?(?:\\s+(?:don|ticket))?|tat ca(?:\\s+cac)?(?:\\s+(?:don|ticket))?|danh sach (?:don|ticket)|xem het(?:\\s+cac)?\\s+(?:don|ticket)|xem toan bo(?:\\s+cac)?\\s+(?:don|ticket)|list ticket/,\n  /(?:^|\\s)reject(?:\\s|$)|tu choi|loai bo lead|loai lead|huy lead/,\n  /them pho nhom|lam pho nhom|bo nhiem pho nhom|len pho nhom|them admin|add admin|them quan tri|cap quyen pho nhom/,\n  /xoa pho nhom|go pho nhom|bo pho nhom|ha pho nhom|xoa admin|bo admin|remove admin|remove deputy|go quyen pho nhom|bo quyen pho nhom|ha quyen pho nhom/,\n].some((pattern) => pattern.test(normalizedText));\n\nconst shouldProcessGroupMessage = normalizedEventType === 'group_message' && Boolean(text);\n\nconst oaId = String(payload.oa_id ?? body.oa_id ?? body.app_id ?? '').trim();\nconst groupId = String(payload.group_id ?? payload.thread_id ?? recipient.id ?? body.group_id ?? '').trim();\nconst senderId = String(payload.sender_id ?? payload.user_id ?? payload.from_id ?? payload.actor_id ?? sender.id ?? '').trim();\nconst senderDisplayName = String(payload.display_name ?? payload.sender_name ?? payload.actor_name ?? sender.display_name ?? sender.name ?? '').trim();\nconst messageId = String(payload.message_id ?? payload.msg_id ?? body.message_id ?? message.msg_id ?? message.id ?? '').trim();\n\nreturn [{\n  json: {\n    oa_id: oaId,\n    group_id: groupId,\n    sender_id: senderId,\n    sender_display_name: senderDisplayName,\n    message_id: messageId,\n    source_event_id: messageId || [groupId, senderId, Date.now()].filter(Boolean).join(':'),\n    event_name: eventName,\n    normalized_event_type: normalizedEventType,\n    text,\n    mention_user_ids: mentionUserIds,\n    should_route_command: shouldProcessGroupMessage,\n    should_process_message: shouldProcessGroupMessage,\n    looks_like_operational_message: looksLikeOperationalMessage,\n    raw_payload: body,\n  },\n}];"
+      },
+      "id": "d1b12e99-cc05-4438-a40d-783dbf527a92",
+      "name": "Normalize Zalo Group Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        63696,
+        27088
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true } }}",
+        "options": {}
+      },
+      "id": "435737e0-483f-435e-85b0-d0b80c540733",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        63920,
+        26992
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.normalized_event_type === 'group_message' && !!String($json.text || '').trim() }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "id": "c0682514-543b-4f37-91c0-bf05e91b4a80",
+      "name": "If Command Event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        63920,
+        27184
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const originalText = String($json.text || '').trim();\nconst isSlashCommand = originalText.startsWith('/');\nconst slashNormalized = isSlashCommand ? originalText.replace(/^\\/+/, '').trim() : '';\nconst slashTokens = slashNormalized ? slashNormalized.split(/\\s+/) : [];\nconst rawSlashCommand = isSlashCommand ? String(slashTokens.shift() || '').toLowerCase() : '';\nconst slashArgs = slashTokens;\nconst slashArgText = slashArgs.join(' ').trim();\nconst mentionUserIds = [...new Set([\n  ...((Array.isArray($json.mention_user_ids) ? $json.mention_user_ids : []).map((value) => String(value || '').trim()).filter(Boolean)),\n  ...Array.from(originalText.matchAll(/(?:\\[@\\s*|@)(\\d{5,})(?:\\])?/g), (match) => String(match[1] || '').trim()).filter(Boolean),\n])];\nconst firstMentionUserId = mentionUserIds[0] || '';\n\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s\\/-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst normalizedText = normalizeText(originalText);\nconst aliasMap = {\n  help: 'help',\n  queue: 'list_tickets',\n  tickets: 'list_tickets',\n  ticketlist: 'list_tickets',\n  'list-tickets': 'list_tickets',\n  list_tickets: 'list_tickets',\n  members: 'members',\n  member: 'members',\n  pending: 'members',\n  ticket: 'get_ticket',\n  'get-ticket': 'get_ticket',\n  get_ticket: 'get_ticket',\n  tracking: 'tracking_url',\n  track: 'tracking_url',\n  'tracking-url': 'tracking_url',\n  tracking_url: 'tracking_url',\n  inventory: 'check_inventory',\n  'check-inventory': 'check_inventory',\n  check_inventory: 'check_inventory',\n  stock: 'check_inventory',\n  addorder: 'add_order',\n  'add-order': 'add_order',\n  add_order: 'add_order',\n  'add-member': 'add_member',\n  add_member: 'add_member',\n  addmember: 'add_member',\n  invite: 'add_member',\n  'invite-member': 'add_member',\n  approve: 'approve_member',\n  'approve-member': 'approve_member',\n  approve_member: 'approve_member',\n  duyet: 'approve_member',\n  pheduyet: 'approve_member',\n  remove: 'remove_member',\n  'remove-member': 'remove_member',\n  remove_member: 'remove_member',\n  xoa: 'remove_member',\n  kick: 'remove_member',\n  'add-admin': 'add_admin',\n  add_admin: 'add_admin',\n  addadmin: 'add_admin',\n  promote: 'add_admin',\n  'promote-admin': 'add_admin',\n  'remove-admin': 'remove_admin',\n  remove_admin: 'remove_admin',\n  removeadmin: 'remove_admin',\n  demote: 'remove_admin',\n  'demote-admin': 'remove_admin',\n  reject: 'reject_ticket',\n  'reject-ticket': 'reject_ticket',\n  reject_ticket: 'reject_ticket',\n};\n\nconst extractTicketId = (value) => {\n  const rawValue = String(value ?? '').trim();\n  if (!rawValue) return null;\n  const directNumber = Number(rawValue);\n  if (Number.isInteger(directNumber) && directNumber > 0) return directNumber;\n  const match = rawValue.match(/(?:^|\\b)(?:t\\s*-?\\s*)?(\\d+)(?:\\b|$)/i);\n  if (!match) return null;\n  const parsedNumber = Number(match[1]);\n  return Number.isInteger(parsedNumber) && parsedNumber > 0 ? parsedNumber : null;\n};\n\nconst extractRole = (value) => {\n  const rawValue = normalizeText(value);\n  if (!rawValue) return '';\n  if (rawValue === 'viewer') return 'viewer';\n  if (/^sales?$/.test(rawValue)) return 'sales';\n  if (rawValue === 'manager') return 'manager';\n  return '';\n};\n\nconst extractLookup = (value) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}]/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n  const fillerTokens = new Set([\n    'phe', 'duyet', 'approve', 'help', 'xem', 'check', 'ticket', 'don', 'member', 'thanh', 'vien',\n    'them', 'moi', 'vao', 'nhom', 'group', 'link', 'giup', 'dum', 'cho', 'kich', 'hoat', 'mo',\n    'quyen', 'ban', 'nay', 'nhe', 'nha', 'di', 'voi', 'dang', 'nguoi', 'ten', 'xoa', 'remove',\n    'kick', 'duoi', 'dua', 'ra', 'khoi', 'out', 'pho', 'admin', 'quan', 'tri', 'bo', 'nhiem',\n    'lam', 'go', 'ha', 'deputy', 'cap', 'len', 'cua'\n  ]);\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (['viewer', 'sales', 'manager'].includes(normalizedToken)) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    return true;\n  });\n  return filteredTokens\n    .map((token) => {\n      const normalizedToken = normalizeText(token);\n      return /^\\d+$/.test(normalizedToken) ? normalizedToken : token;\n    })\n    .join(' ')\n    .trim();\n};\n\nconst extractTrackingLookup = (value) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}]/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n\n  const fillerTokens = new Set([\n    'tracking', 'track', 'url', 'link', 'lay', 'cho', 'toi', 'xin', 'gui', 'giup', 'dum', 'nhe', 'nha',\n    'tra', 'cuu', 'lich', 'trinh', 'van', 'don', 'ma', 'giao', 'hang', 'nhanh', 'cua', 'xem', 'check',\n    'kiem', 'tra', 'order', 'donhang', 'shipping', 'do', 'nay', 'kia', 'no', 'cai', 'moi', 'nhat',\n    'gan', 'truoc', 'vua', 'roi', 'ticket', 'case', 'lead', 've', 'yeu', 'cau'\n  ]);\n\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    return true;\n  });\n\n  return filteredTokens\n    .map((token) => {\n      const normalizedToken = normalizeText(token);\n      return /^\\d+$/.test(normalizedToken) ? normalizedToken : token;\n    })\n    .join(' ')\n    .trim();\n};\n\nconst extractInventoryLookup = (value) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}]/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n\n  const fillerTokens = new Set([\n    'check', 'kiem', 'tra', 'ton', 'kho', 'con', 'hang', 'khong', 'ko', 'hong', 'het', 'chua',\n    'lay', 'xem', 'giup', 'dum', 'cho', 'toi', 'xin', 'nhe', 'nha', 'di', 'voi', 'co', 'ma', 'mau',\n    'nay', 'kia', 'do', 'cua', 'shop', 'inventory', 'stock', 'san', 'pham', 'sp'\n  ]);\n\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    return true;\n  });\n\n  return filteredTokens\n    .map((token) => {\n      const normalizedToken = normalizeText(token);\n      return /^\\d+$/.test(normalizedToken) ? normalizedToken : token;\n    })\n    .join(' ')\n    .trim();\n};\n\nconst extractReason = (value, ticketId) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}]/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n  const ticketText = String(ticketId || '').trim();\n  const fillerTokens = new Set(['reject', 'tu', 'choi', 'xem', 'tat', 'ca', 'danh', 'sach', 'ticket', 'don', 'ma', 'lenh', 't']);\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    if (ticketText && normalizedToken === ticketText) return false;\n    if (ticketText && normalizedToken === ('t' + ticketText)) return false;\n    return true;\n  });\n  return filteredTokens.join(' ').trim();\n};\n\nconst helpPatterns = [/(^|\\s)help(\\s|$)/, /huong dan/, /co lenh gi/, /xem lenh/, /menu/];\nconst trackingPatterns = [\n  /tracking/,\n  /track/,\n  /url tracking/,\n  /link tracking/,\n  /lich trinh/,\n  /tra cuu van don/,\n  /ma van don/,\n  /link van chuyen/,\n  /kiem tra giao hang/\n];\nconst inventoryPatterns = [\n  /ton kho/,\n  /kiem tra ton kho/,\n  /check ton kho/,\n  /con hang/,\n  /het hang/,\n  /con size/,\n  /stock/,\n  /inventory/,\n  /size\\s*\\d+(?:[.,]\\d+)?\\s+(?:con|het)/,\n  /hang nay con khong/,\n  /san pham nay con khong/\n];\nconst listTicketPatterns = [/^xem tat ca$/, /^tat ca$/, /^xem tat ca(?: cac)?(?: (?:don|ticket|ve|lead|yeu cau|case))?$/, /^tat ca(?: cac)?(?: (?:don|ticket|ve|lead|yeu cau|case))?$/, /danh sach (?:ticket|don|ve|lead|yeu cau|case)/, /xem het(?: cac)? (?:don|ticket|ve|lead|yeu cau|case)/, /xem toan bo(?: cac)? (?:don|ticket|ve|lead|yeu cau|case)/, /list (?:ticket|don|ve|lead|yeu cau|case)/, /(?:dang co|hien co|con|co) (?:ticket|don|ve|lead|yeu cau|case) nao(?: khong)?/, /(?:dang co|hien co|con|co) (?:khach|khach hang) nao(?: can| de| dang)? ?(?:xu ly|goi|follow|chot|mo|pending)?(?: khong)?/, /(?:khach|khach hang|lead|case) nao (?:can|de|dang) ?(?:xu ly|goi|follow|chot|mo|pending)/, /co gi can (?:xu ly|goi|follow|chot)/, /co gi moi/, /co gi dang mo/];\nconst membersPatterns = [/xem thanh vien/, /danh sach thanh vien/, /danh sach member/, /member cho duyet/, /pending member/, /ai dang cho duyet/, /xem pending/, /xem member/];\nconst addMemberPatterns = [/them thanh vien/, /moi thanh vien/, /add member/, /invite member/, /moi vao nhom/, /them nguoi vao nhom/, /link vao nhom/, /cach them thanh vien/];\nconst approvePatterns = [/(^|\\s)phe duyet(\\s|$)/, /duyet member/, /duyet thanh vien/, /approve member/, /approve thanh vien/, /cho vao/, /kich hoat member/, /kich hoat thanh vien/, /^duyet(\\s|$)/];\nconst addAdminPatterns = [/them pho nhom/, /lam pho nhom/, /bo nhiem pho nhom/, /len pho nhom/, /them admin/, /add admin/, /them quan tri/, /cap quyen pho nhom/];\nconst removeAdminPatterns = [/xoa pho nhom/, /go pho nhom/, /bo pho nhom/, /ha pho nhom/, /xoa admin/, /bo admin/, /remove admin/, /remove deputy/, /go quyen pho nhom/, /bo quyen pho nhom/, /ha quyen pho nhom/];\nconst removePatterns = [/(^|\\s)xoa(\\s|$)/, /xoa thanh vien/, /xoa member/, /xoa khoi nhom/, /dua ra khoi nhom/, /duoi khoi nhom/, /remove member/, /remove user/, /kick member/, /kick khoi nhom/];\nconst rejectPatterns = [/(^|\\s)reject(\\s|$)/, /tu choi/, /loai bo lead/, /loai lead/, /huy lead/];\nconst getTicketPatterns = [/xem (?:ticket|don|ve|lead|yeu cau)/, /check (?:ticket|don|ve|lead|yeu cau)/, /(?:ticket|don|ve|lead|yeu cau) ao/, /chi tiet (?:ticket|don|ve|lead|yeu cau)/, /thong tin (?:ticket|don|ve|lead|yeu cau)/, /trang thai (?:ticket|don|ve|lead|yeu cau)/, /lay thong tin/, /co (?:don|ticket|ve|lead|yeu cau)/, /(?:ticket|don|ve|lead|yeu cau) t/, /check t\\s*-?\\s*\\d+/];\n\nconst explicitLocalTicketMatch =\n  originalText.match(/(?:^|\\b)(?:ticket|case|lead|ve|yeu cau)\\s*(?:t\\s*[-:#]?\\s*)?(\\d+)(?:\\b|$)/i) ||\n  originalText.match(/(?:^|\\b)t\\s*[-:#]?\\s*(\\d+)(?:\\b|$)/i);\nconst explicitLocalTicketId = explicitLocalTicketMatch ? extractTicketId(explicitLocalTicketMatch[0]) : null;\n\nconst ticketMatchFromText =\n  originalText.match(/(?:^|\\b)(?:ticket|don|ve|lead|yeu cau|ma|lenh)?\\s*t\\s*[-:#]?\\s*(\\d+)(?:\\b|$)/i) ||\n  originalText.match(/(?:^|\\b)(?:ticket|don|ve|lead|yeu cau)\\s*[-:#]?\\s*(\\d+)(?:\\b|$)/i) ||\n  originalText.match(/(?:^|\\b)t\\s*[-:#]?\\s*(\\d+)(?:\\b|$)/i);\nconst ticketIdFromText = ticketMatchFromText ? extractTicketId(ticketMatchFromText[0]) : null;\nconst looseNumberMatch = originalText.match(/(?:^|\\s)(\\d+)(?:\\s|$)/);\nconst looseTicketIdFromText = looseNumberMatch ? extractTicketId(looseNumberMatch[1]) : null;\n\nlet toolName = aliasMap[rawSlashCommand] || 'unknown';\nlet routeSource = isSlashCommand ? 'draft_slash' : 'draft_heuristic';\nlet ticketId = null;\nlet lookupValue = '';\nlet roleValue = '';\nlet reasonText = '';\nlet commandArgsText = '';\nlet argsJson = [];\nlet ticketRefRaw = '';\nlet replyText = '';\nlet shouldRoute = false;\n\nif (isSlashCommand) {\n  const firstArg = String(slashArgs[0] || '').trim();\n  const secondArg = String(slashArgs[1] || '').trim();\n  if (toolName === 'list_tickets') {\n    shouldRoute = true;\n  } else if (toolName === 'get_ticket') {\n    ticketId = extractTicketId(firstArg);\n    if (ticketId) {\n      shouldRoute = true;\n      lookupValue = String(ticketId);\n      commandArgsText = String(ticketId);\n      argsJson = [String(ticketId)];\n      ticketRefRaw = 'T-' + ticketId;\n    } else {\n      replyText = 'Bạn muốn xem ticket nào?';\n    }\n  } else if (toolName === 'tracking_url') {\n    const rawTrackingArg = firstMentionUserId || slashArgText || firstArg;\n    ticketId = explicitLocalTicketId || (/^t\\s*-?\\s*\\d+$/i.test(rawTrackingArg) ? extractTicketId(rawTrackingArg) : null);\n    lookupValue = ticketId ? '' : (extractTrackingLookup(rawTrackingArg) || (/^\\d{6,}$/.test(normalizeText(rawTrackingArg)) ? normalizeText(rawTrackingArg) : ''));\n    if (ticketId || lookupValue) {\n      shouldRoute = true;\n      commandArgsText = ticketId ? ('T-' + ticketId) : lookupValue;\n      argsJson = commandArgsText ? [commandArgsText] : [];\n      ticketRefRaw = ticketId ? ('T-' + ticketId) : '';\n    } else {\n      replyText = 'Bạn muốn lấy tracking cho đơn nào?';\n    }\n  } else if (toolName === 'check_inventory') {\n    const rawInventoryArg = slashArgText || firstArg;\n    ticketId = explicitLocalTicketId || (/^t\\s*-?\\s*\\d+$/i.test(rawInventoryArg) ? extractTicketId(rawInventoryArg) : null);\n    lookupValue = ticketId ? '' : extractInventoryLookup(rawInventoryArg);\n    if (ticketId || lookupValue) {\n      shouldRoute = true;\n      commandArgsText = ticketId ? ('T-' + ticketId) : lookupValue;\n      argsJson = commandArgsText ? [commandArgsText] : [];\n      ticketRefRaw = ticketId ? ('T-' + ticketId) : '';\n    } else {\n      replyText = 'Bạn muốn check tồn kho mẫu nào?';\n    }\n  } else if (toolName === 'add_order') {\n    ticketId = explicitLocalTicketId || extractTicketId(firstArg) || extractTicketId(secondArg) || extractTicketId(slashArgText);\n    shouldRoute = true;\n    lookupValue = slashArgText;\n    commandArgsText = slashArgText;\n    argsJson = slashArgs;\n    ticketRefRaw = ticketId ? ('T-' + ticketId) : '';\n  } else if (toolName === 'approve_member') {\n    shouldRoute = true;\n    lookupValue = firstMentionUserId || firstArg;\n    roleValue = secondArg ? extractRole(secondArg) : '';\n    commandArgsText = [lookupValue, roleValue].filter(Boolean).join(' ').trim();\n    argsJson = [lookupValue, roleValue].filter(Boolean);\n  } else if (['remove_member', 'add_member', 'add_admin', 'remove_admin'].includes(toolName)) {\n    shouldRoute = true;\n    lookupValue = firstMentionUserId || slashArgText || firstArg;\n    commandArgsText = lookupValue;\n    argsJson = lookupValue ? [lookupValue] : [];\n  } else if (toolName === 'reject_ticket') {\n    ticketId = extractTicketId(firstArg);\n    reasonText = slashArgs.slice(1).join(' ').trim();\n    if (!ticketId) {\n      replyText = 'Thiếu ticket_id. Ví dụ: /reject 123 sai số.';\n    } else if (!reasonText) {\n      replyText = 'Thiếu lý do reject. Ví dụ: /reject 123 sai số.';\n    } else {\n      shouldRoute = true;\n      lookupValue = String(ticketId);\n      commandArgsText = [String(ticketId), reasonText].filter(Boolean).join(' ').trim();\n      argsJson = [String(ticketId), reasonText];\n      ticketRefRaw = 'T-' + ticketId;\n    }\n  } else if (toolName === 'help' || toolName === 'members') {\n    shouldRoute = true;\n    commandArgsText = slashArgs.join(' ').trim();\n    argsJson = slashArgs;\n  } else {\n    replyText = rawSlashCommand ? ('Không nhận ra lệnh /' + rawSlashCommand + '.') : 'Dùng /help.';\n  }\n} else {\n  const hasAny = (patterns) => patterns.some((pattern) => pattern.test(normalizedText));\n  if (hasAny(helpPatterns)) {\n    toolName = 'help';\n    shouldRoute = true;\n  } else if (hasAny(trackingPatterns)) {\n    toolName = 'tracking_url';\n    ticketId = explicitLocalTicketId;\n    lookupValue = ticketId ? '' : (firstMentionUserId || extractTrackingLookup(originalText) || (/^\\d{6,}$/.test(normalizedText) ? normalizedText : ''));\n    if (ticketId || lookupValue) {\n      shouldRoute = true;\n      commandArgsText = ticketId ? ('T-' + ticketId) : lookupValue;\n      argsJson = commandArgsText ? [commandArgsText] : [];\n      ticketRefRaw = ticketId ? ('T-' + ticketId) : '';\n    } else {\n      replyText = 'Bạn muốn lấy tracking cho đơn nào?';\n    }\n  } else if (hasAny(inventoryPatterns)) {\n    toolName = 'check_inventory';\n    ticketId = explicitLocalTicketId;\n    lookupValue = ticketId ? '' : extractInventoryLookup(originalText);\n    if (ticketId || lookupValue) {\n      shouldRoute = true;\n      commandArgsText = ticketId ? ('T-' + ticketId) : lookupValue;\n      argsJson = commandArgsText ? [commandArgsText] : [];\n      ticketRefRaw = ticketId ? ('T-' + ticketId) : '';\n    } else {\n      replyText = 'Bạn muốn check tồn kho mẫu nào?';\n    }\n  } else if (hasAny(listTicketPatterns)) {\n    toolName = 'list_tickets';\n    shouldRoute = true;\n  } else if (hasAny(membersPatterns)) {\n    toolName = 'members';\n    shouldRoute = true;\n  } else if (hasAny(addAdminPatterns)) {\n    toolName = 'add_admin';\n    lookupValue = firstMentionUserId || extractLookup(originalText);\n    commandArgsText = lookupValue;\n    argsJson = lookupValue ? [lookupValue] : [];\n    shouldRoute = true;\n  } else if (hasAny(removeAdminPatterns)) {\n    toolName = 'remove_admin';\n    lookupValue = firstMentionUserId || extractLookup(originalText);\n    commandArgsText = lookupValue;\n    argsJson = lookupValue ? [lookupValue] : [];\n    shouldRoute = true;\n  } else if (hasAny(addMemberPatterns)) {\n    toolName = 'add_member';\n    lookupValue = firstMentionUserId || extractLookup(originalText);\n    commandArgsText = lookupValue;\n    argsJson = lookupValue ? [lookupValue] : [];\n    shouldRoute = true;\n  } else if (hasAny(approvePatterns)) {\n    toolName = 'approve_member';\n    lookupValue = firstMentionUserId || extractLookup(originalText);\n    roleValue = extractRole(originalText) || '';\n    commandArgsText = [lookupValue, roleValue].filter(Boolean).join(' ').trim();\n    argsJson = [lookupValue, roleValue].filter(Boolean);\n    shouldRoute = true;\n  } else if (hasAny(removePatterns)) {\n    toolName = 'remove_member';\n    lookupValue = firstMentionUserId || extractLookup(originalText);\n    commandArgsText = lookupValue;\n    argsJson = lookupValue ? [lookupValue] : [];\n    shouldRoute = true;\n  } else if (hasAny(rejectPatterns)) {\n    toolName = 'reject_ticket';\n    ticketId = ticketIdFromText ?? looseTicketIdFromText;\n    if (!ticketId) {\n      replyText = 'Thiếu ticket_id. Ví dụ: /reject 123 sai số.';\n    } else {\n      reasonText = extractReason(originalText, ticketId);\n      if (!reasonText) {\n        replyText = 'Thiếu lý do reject. Ví dụ: /reject 123 sai số.';\n      } else {\n        shouldRoute = true;\n      }\n    }\n  } else if (hasAny(getTicketPatterns) || /(^|\\s)(ticket|don|ve|lead|yeu cau)(\\s|$)/.test(normalizedText)) {\n    toolName = 'get_ticket';\n    ticketId = ticketIdFromText ?? looseTicketIdFromText;\n    if (ticketId) {\n      shouldRoute = true;\n    } else {\n      replyText = 'Bạn muốn xem ticket nào?';\n    }\n  }\n\n  if (toolName === 'get_ticket' && ticketId) {\n    lookupValue = String(ticketId);\n    commandArgsText = String(ticketId);\n    argsJson = [String(ticketId)];\n    ticketRefRaw = 'T-' + ticketId;\n  }\n  if (toolName === 'reject_ticket' && ticketId && reasonText) {\n    lookupValue = String(ticketId);\n    commandArgsText = [String(ticketId), reasonText].filter(Boolean).join(' ').trim();\n    argsJson = [String(ticketId), reasonText];\n    ticketRefRaw = 'T-' + ticketId;\n  }\n}\n\nconst needsAiRouter = true;\n\nreturn [{\n  json: {\n    ...$json,\n    route_source: routeSource,\n    command_text: originalText,\n    tool_name: toolName,\n    command_name: toolName,\n    command_args_text: commandArgsText,\n    args_json: argsJson,\n    role_value: roleValue,\n    reason_text: reasonText,\n    ticket_id: ticketId,\n    lookup_value: lookupValue,\n    ticket_ref_raw: ticketRefRaw,\n    reply_text: replyText,\n    should_route_command: shouldRoute,\n    needs_ai_router: needsAiRouter,\n  },\n}];"
+      },
+      "id": "a3a16a51-1285-43d5-9518-3f9c3febe823",
+      "name": "Parse Zalo Command Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64144,
+        27376
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9345d7f9-b4e3-4968-b67b-f8a743703df4",
+      "name": "If Needs AI Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        64368,
+        27376
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "intent_prompt",
+              "type": "string",
+              "value": "={{ (() => {\n  const parseJson = (value) => {\n    if (typeof value !== 'string') return value;\n    try {\n      return JSON.parse(value);\n    } catch {\n      return value;\n    }\n  };\n\n  const recentRaw = parseJson($json.recent_actions);\n  const recentActions = Array.isArray(recentRaw) ? recentRaw : [];\n  const recentTicketRaw = parseJson($json.recent_ticket_actions);\n  const recentTicketActions = Array.isArray(recentTicketRaw) ? recentTicketRaw : [];\n  const openTicketRaw = parseJson($json.open_tickets);\n  const openTickets = Array.isArray(openTicketRaw) ? openTicketRaw : [];\n\n  const recentLines = recentActions.slice(0, 5).map((item) => {\n    const actor = String(item?.actor_display_name || '').trim() || 'không rõ';\n    const commandText = String(item?.command_text || '').trim();\n    const toolName = String(item?.tool_name || item?.action_type || '').trim();\n    const replyText = String(item?.reply_text || '').replace(/\\s+/g, ' ').trim().slice(0, 140);\n    const parts = [];\n    if (commandText) parts.push(actor + ': ' + commandText);\n    if (toolName) parts.push('tool=' + toolName);\n    if (replyText) parts.push('bot=' + replyText);\n    return parts.join(' | ');\n  }).filter(Boolean);\n\n  const recentTicketLines = recentTicketActions.slice(0, 4).map((item) => {\n    const ticketId = String(item?.ticket_id || '').trim();\n    if (!ticketId) return '';\n    const toolName = String(item?.tool_name || item?.route_key || '').trim() || 'unknown';\n    const commandText = String(item?.command_text || '').replace(/\\s+/g, ' ').trim().slice(0, 120);\n    const parts = ['T-' + ticketId, toolName];\n    if (commandText) parts.push(commandText);\n    return parts.join(' | ');\n  }).filter(Boolean);\n\n  const openTicketLines = openTickets.slice(0, 4).map((item) => {\n    const ticketId = String(item?.id || '').trim();\n    if (!ticketId) return '';\n    const status = String(item?.status || '').trim() || 'chưa rõ';\n    const customer = String(item?.fullname || item?.phone || '').trim() || 'không rõ';\n    const product = String(item?.products_interested || '').replace(/\\s+/g, ' ').trim();\n    return ['T-' + ticketId, status, customer, product].filter(Boolean).join(' | ');\n  }).filter(Boolean);\n\n  const latestTicketId = String($json.latest_ticket_id || '').trim();\n  const latestOpenTicketId = String($json.latest_open_ticket_id || '').trim();\n  const openTicketTotal = Number($json.open_ticket_total || openTickets.length || 0);\n\n  return [\n    'Đây là tin nhắn trong nhóm Zalo nội bộ.',\n    'Người gửi: ' + (String($json.sender_display_name || '').trim() || 'không rõ'),\n    'Nội dung: ' + String($json.text || '').trim(),\n    'Mention user_id: ' + (((Array.isArray($json.mention_user_ids) ? $json.mention_user_ids : []).join(', ')) || 'không có'),\n    '',\n    'Gợi ý nháp:',\n    'draft_tool: ' + (String($json.tool_name || $json.command_name || 'unknown').trim() || 'unknown'),\n    'draft_ticket_id: ' + (String($json.ticket_id || '').trim() || 'null'),\n    'draft_lookup: ' + (String($json.lookup_value || '').trim() || ''),\n    'draft_role: ' + (String($json.role_value || '').trim() || ''),\n    'draft_reason: ' + (String($json.reason_text || '').trim() || ''),\n    'draft_reply: ' + (String($json.reply_text || '').trim() || ''),\n    '',\n    'Ticket context:',\n    'latest_ticket_id: ' + (latestTicketId ? ('T-' + latestTicketId) : 'không rõ'),\n    'latest_open_ticket_id: ' + (latestOpenTicketId ? ('T-' + latestOpenTicketId) : 'không rõ'),\n    'open_ticket_total: ' + String(openTicketTotal),\n    openTicketLines.length ? 'Ticket mở gần nhất:' : 'Ticket mở gần nhất: chưa có',\n    ...openTicketLines.map((line, index) => String(index + 1) + '. ' + line),\n    recentTicketLines.length ? 'Ticket vừa thao tác:' : 'Ticket vừa thao tác: chưa có',\n    ...recentTicketLines.map((line, index) => String(index + 1) + '. ' + line),\n    '',\n    recentLines.length ? 'Ngữ cảnh lệnh gần nhất:' : 'Ngữ cảnh lệnh gần nhất: chưa có',\n    ...recentLines.map((line, index) => String(index + 1) + '. ' + line),\n    '',\n    'Gợi ý tool theo ngữ nghĩa:',\n    '- list_tickets: hỏi danh sách ticket đang mở hoặc tất cả ticket. Nếu hỏi kiểu còn gì cần xử lý, có gì mới, có khách nào cần gọi thì hiểu là ticket_scope=open.',\n    '- get_ticket: hỏi một ticket/case cụ thể. Nếu nói ticket đó, đơn đó, case mới nhất thì được phép dùng latest_ticket_id hoặc ticket mở gần nhất nếu ngữ cảnh đủ rõ.',\n    '- tracking_url: lấy link tracking, lịch trình giao hàng, tracking URL, tra cứu vận đơn. Có thể tra theo T-<id>, số điện thoại, hoặc mã đơn Nhanh. Nếu nói tracking đơn đó thì được phép dùng latest_ticket_id khi ngữ cảnh đủ rõ.',\n    '- check_inventory: hỏi tồn kho, còn hàng, còn size, hết hàng, stock. Nếu đã rõ sản phẩm hoặc suy ra đủ rõ từ ticket context thì map sang check_inventory và điền product_query. Workflow sẽ tự gọi sub-workflow tồn kho sau bước route. lookup_value là tên hoặc mã sản phẩm.',\n    '- reject_ticket: từ chối một ticket cụ thể. Nếu nói reject nó, huỷ đơn đó thì được phép suy luận từ latest_ticket_id khi hợp lý.',\n    '',\n    'Nhiệm vụ: chọn đúng tool an toàn theo ý nghĩa, không phụ thuộc đúng từ mẫu. Chỉ suy luận ticket_id từ context khi ngữ cảnh thật sự đủ rõ. Nếu có [@123] thì coi đó là user_id mục tiêu. Nếu là tồn kho mà đã rõ sản phẩm thì ưu tiên map sang check_inventory.'\n  ].join('\\n');\n})() }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "c73bbfe9-3277-4954-9176-38f1e076904f",
+      "name": "Set Zalo AI Intent Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        65040,
+        26128
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.intent_prompt }}",
+        "options": {
+          "systemMessage": "Bạn là AI điều phối tool cho nhóm Zalo của team sale.\nƯu tiên hiểu đúng ý định của người gửi trong ngữ cảnh nhóm gần nhất.\nChỉ trả về đúng 1 JSON hợp lệ. Không markdown. Không giải thích.\n\nSchema bắt buộc:\n{\n  \"should_route\": true,\n  \"tool_name\": \"help|list_tickets|get_ticket|tracking_url|check_inventory|members|add_member|approve_member|remove_member|add_admin|remove_admin|reject_ticket|add_order|unknown\",\n  \"ticket_id\": null,\n  \"ticket_scope\": \"\",\n  \"lookup_value\": \"\",\n  \"city_query\": \"\",\n  \"district_query\": \"\",\n  \"max_results\": 5,\n  \"role_value\": \"\",\n  \"reason_text\": \"\",\n  \"confidence\": 0.0,\n  \"reply_text\": \"\"\n}\n\nQuy tắc tổng quát:\n- map theo ngữ nghĩa, không cần khớp đúng câu mẫu\n- unknown chỉ dùng khi là chat thường hoặc không có ý định vận hành rõ ràng\n- add_order chỉ dùng khi người gửi dùng explicit slash command /addorder\n- coi ticket, đơn, vé, lead, yêu cầu, case, khách cần xử lý là cùng một nhóm công việc sale\n- luôn ưu tiên id tường minh trong tin nhắn nếu có\n- chỉ suy luận ticket_id từ context khi ngữ cảnh đủ rõ\n\nCatalog tool:\n- help: hỏi hướng dẫn, menu, có lệnh gì\n- list_tickets: hỏi danh sách công việc\n- get_ticket: hỏi một ticket hoặc case cụ thể\n- tracking_url: hỏi link tracking, lịch trình giao hàng, tra cứu vận đơn\n- check_inventory: hỏi tồn kho, còn hàng, còn size, hết hàng, stock, inventory\n- members: hỏi danh sách thành viên hoặc pending member chờ duyệt\n- add_member: hỏi cách thêm thành viên hoặc mời vào nhóm\n- approve_member: duyệt thành viên vào nhóm\n- remove_member: xoá thành viên khỏi nhóm\n- add_admin: thêm hoặc bổ nhiệm phó nhóm\n- remove_admin: bỏ hoặc gỡ quyền phó nhóm\n- reject_ticket: từ chối, loại, huỷ một lead hoặc ticket cụ thể\n- add_order: tạo hoặc cập nhật draft đơn từ ticket ảo, chỉ khi tin nhắn bắt đầu bằng /addorder\n\nQuy tắc ticket:\n- list_tickets phải đi kèm ticket_scope:\n  + open: khi hỏi còn gì cần xử lý, có gì mới, ticket mở, lead mở, còn khách nào cần gọi/follow/chốt\n  + all: khi hỏi xem tất cả, toàn bộ, hết, danh sách tất cả ticket\n- get_ticket: dùng khi hỏi một ticket cụ thể, nhất là khi có T-<id>, ticket_id, hoặc câu như ticket đó, đơn đó, case mới nhất và prompt đã có latest_ticket_id đủ rõ\n- tracking_url: dùng khi người gửi cần link tracking, URL tracking, lịch trình giao hàng, link vận chuyển\n  + nếu có T-<id> hoặc ticket/case cụ thể thì đưa vào ticket_id\n  + nếu có số điện thoại, mã đơn Nhanh, mã vận đơn thì đưa vào lookup_value\n  + nếu nói tracking đơn đó, tracking ticket mới nhất thì được phép dùng latest_ticket_id khi ngữ cảnh đủ rõ\n- check_inventory: dùng khi người gửi cần kiểm tra tồn kho\n  + nếu đã rõ sản phẩm hoặc suy ra đủ rõ từ ngữ cảnh ticket gần nhất thì map sang check_inventory và điền product_query\n  + product_query là tên hoặc mã sản phẩm\n  + city_query và district_query chỉ là gợi ý phụ, có thể để trống\n  + workflow sẽ tự chạy sub-workflow tồn kho sau bước route\n  + không tự đoán tồn kho nếu chưa rõ sản phẩm hoặc dữ liệu trả về lỗi\n  + nếu chưa rõ sản phẩm và không suy ra an toàn thì không gọi tool, should_route = false và reply_text hỏi ngắn gọn\n- reject_ticket: dùng khi người gửi muốn reject hoặc huỷ một ticket cụ thể; được phép dùng latest_ticket_id nếu câu như reject nó, huỷ đơn đó và context đủ rõ\n- không map sang list_tickets nếu người dùng đang hỏi một ticket cụ thể\n- nếu là get_ticket nhưng chưa rõ ticket nào thì should_route = false và reply_text hỏi ngắn gọn\n- nếu là tracking_url mà thiếu tham chiếu thì should_route = false và reply_text hỏi ngắn gọn\n- nếu là reject_ticket mà thiếu ticket_id hoặc thiếu lý do, chỉ hỏi lại khi không thể suy ra từ ngữ cảnh gần nhất\n\nQuy tắc member:\n- nếu approve_member, remove_member, add_admin, remove_admin có tên hoặc user_id thì đưa vào lookup_value\n- nếu có [@123456] hoặc @123456 thì coi đó là user_id mục tiêu và đưa vào lookup_value = \"123456\"\n- nếu approve_member có role thì role_value chỉ được là viewer, sales hoặc manager\n- nếu remove_member thiếu target thì vẫn route với lookup_value = \"\"\n- nếu là /addorder thì tool_name = add_order và không tự đổi sang tool khác chỉ vì patch text có chữ ticket, sản phẩm, số điện thoại\n- nếu add_admin hoặc remove_admin thiếu target thì vẫn route với lookup_value = \"\"\n\nQuy tắc reject:\n- nếu reject_ticket có ticket_id thì đưa vào ticket_id\n- nếu reject_ticket có lý do thì đưa vào reason_text\n\nQuy tắc output:\n- reply_text phải ngắn, tiếng Việt có dấu\n- nếu chỉ là chat thường thì tool_name = unknown, should_route = false, reply_text = \"\"\n\nVí dụ định hướng:\n- \"đang có vé nào\", \"có lead nào không\", \"còn khách nào cần gọi\", \"case nào đang mở\", \"có gì cần xử lý\" => list_tickets + ticket_scope=open\n- \"xem tất cả\", \"toàn bộ ticket\", \"liệt kê hết\" => list_tickets + ticket_scope=all\n- \"vé T-3\", \"lead T-3\", \"xem case 12\", \"ticket đó\", \"đơn mới nhất\" => get_ticket\n- \"tracking đơn T-3\", \"cho tôi link tracking đơn đó\", \"url tracking 755684682\", \"tra cứu vận đơn 0909560650\" => tracking_url\n- \"check tồn kho altra timp 5 size 42\", \"còn Norda 001 ở HCM không\", \"stock ticket T-3\", \"kiểm tra tồn kho đơn đó\" => check_inventory\n- \"reject nó vì trùng\", \"huỷ đơn đó vì sai số\" => reject_ticket\n- \"bỏ phó nhóm cho [@123456]\" => remove_admin\n- \"/addorder t-3 tên Phạm Hoàng Hải 0387803007\" => add_order\n- \"/addorder show t-3\" => add_order\n- \"/addorder confirm t-3\" => add_order"
+        }
+      },
+      "id": "f73220f7-0cf6-418e-a7ed-a88e2ec202c6",
+      "name": "AI Zalo Natural Command Router",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        65264,
+        26128
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "id": "97a65867-8a1c-433f-ba10-d377b7804610",
+      "name": "OpenAI Chat Model Zalo Command",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        65344,
+        26352
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "R4u2zDSLYQvqpat3",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Set Zalo AI Intent Input').first().json;\nconst raw = $json.output ?? $json.text ?? $json;\n\nlet text = '';\nif (typeof raw === 'string') {\n  text = raw.trim();\n} else {\n  text = JSON.stringify(raw);\n}\n\ntext = text\n  .replace(/^\\`\\`\\`json\\s*/i, '')\n  .replace(/^\\`\\`\\`\\s*/i, '')\n  .replace(/\\s*\\`\\`\\`$/i, '')\n  .trim();\n\nlet parsed = {};\ntry {\n  parsed = JSON.parse(text);\n} catch (error) {\n  parsed = {};\n}\n\nif (parsed && typeof parsed.output === 'object' && parsed.output !== null) {\n  parsed = parsed.output;\n}\n\nconst parseJson = (value) => {\n  if (typeof value !== 'string') return value;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return value;\n  }\n};\n\nconst allowedTools = new Set(['help', 'list_tickets', 'get_ticket', 'tracking_url', 'check_inventory', 'members', 'add_member', 'approve_member', 'remove_member', 'add_admin', 'remove_admin', 'reject_ticket', 'add_order']);\nconst originalText = String(base.text || '').trim();\nconst mentionUserIds = [...new Set([\n  ...((Array.isArray(base.mention_user_ids) ? base.mention_user_ids : []).map((value) => String(value || '').trim()).filter(Boolean)),\n  ...Array.from(originalText.matchAll(/(?:\\[@\\s*|@)(\\d{5,})(?:\\])?/g), (match) => String(match[1] || '').trim()).filter(Boolean),\n])];\n\nconst recentTicketActionsRaw = parseJson(base.recent_ticket_actions);\nconst recentTicketActions = Array.isArray(recentTicketActionsRaw) ? recentTicketActionsRaw : [];\nconst openTicketsRaw = parseJson(base.open_tickets);\nconst openTickets = Array.isArray(openTicketsRaw) ? openTicketsRaw : [];\n\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s\\/-]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst compressText = (value) => normalizeText(value).replace(/\\s+/g, '');\nconst onlyDigits = (value) => String(value || '').replace(/[^\\d]/g, '');\n\nconst extractTicketId = (value) => {\n  const rawValue = String(value ?? '').trim();\n  if (!rawValue) return null;\n  const directNumber = Number(rawValue);\n  if (Number.isInteger(directNumber) && directNumber > 0) return directNumber;\n  const match = rawValue.match(/(?:^|\\b)(?:t\\s*-?\\s*)?(\\d+)(?:\\b|$)/i);\n  if (!match) return null;\n  const parsedNumber = Number(match[1]);\n  return Number.isInteger(parsedNumber) && parsedNumber > 0 ? parsedNumber : null;\n};\n\nconst extractRole = (value) => {\n  const rawValue = normalizeText(value);\n  if (!rawValue) return '';\n  if (rawValue === 'viewer') return 'viewer';\n  if (/^sales?$/.test(rawValue)) return 'sales';\n  if (rawValue === 'manager') return 'manager';\n  return '';\n};\n\nconst normalizeTicketScope = (value) => {\n  const rawValue = compressText(value);\n  if (!rawValue) return '';\n  if (['all', 'tatca', 'toanbo', 'het', 'full'].includes(rawValue)) return 'all';\n  if (['open', 'mo', 'active', 'dangxuly', 'pending', 'current'].includes(rawValue)) return 'open';\n  return '';\n};\n\nconst deriveTicketScope = (value) => {\n  const normalizedValue = normalizeText(value);\n  if (!normalizedValue) return '';\n  if (/(^|\\s)(xem tat ca|tat ca|toan bo|xem het|liet ke het)(\\s|$)/.test(normalizedValue)) return 'all';\n  if (/danh sach tat ca/.test(normalizedValue)) return 'all';\n  if (/(^|\\s)(dang co|hien co|con|co)(\\s|$)/.test(normalizedValue)) return 'open';\n  if (/(co gi can|co gi dang|co gi moi|ticket mo|lead mo|case mo|khach nao can)/.test(normalizedValue)) return 'open';\n  return '';\n};\n\nconst extractLookup = (value) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}\"']/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n\n  const fillerTokens = new Set([\n    'phe', 'duyet', 'approve', 'help', 'xem', 'check', 'ticket', 'don', 'member', 'thanh', 'vien',\n    'them', 'moi', 'vao', 'nhom', 'group', 'link', 'giup', 'dum', 'cho', 'kich', 'hoat', 'mo',\n    'quyen', 'ban', 'nay', 'nhe', 'nha', 'di', 'voi', 'dang', 'cho', 'nguoi', 'ten', 'anh', 'chi',\n    'em', 'oi', 'giu', 'ho', 'gium', 'a', 'ah', 'ha', 'xoa', 'remove', 'kick', 'duoi', 'dua',\n    'ra', 'khoi', 'out', 'pho', 'admin', 'quan', 'tri', 'bo', 'nhiem', 'lam', 'go', 'ha',\n    'deputy', 'cap', 'len', 'cua'\n  ]);\n\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (['viewer', 'sales', 'manager'].includes(normalizedToken)) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    return true;\n  });\n\n  return filteredTokens\n    .map((token) => {\n      const normalizedToken = normalizeText(token);\n      return /^\\d+$/.test(normalizedToken) ? normalizedToken : token;\n    })\n    .join(' ')\n    .trim();\n};\n\nconst extractTrackingLookup = (value) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}\"']/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n\n  const fillerTokens = new Set([\n    'tracking', 'track', 'url', 'link', 'lay', 'cho', 'toi', 'xin', 'gui', 'giup', 'dum', 'nhe', 'nha',\n    'tra', 'cuu', 'lich', 'trinh', 'van', 'don', 'ma', 'giao', 'hang', 'nhanh', 'cua', 'xem', 'check',\n    'kiem', 'tra', 'order', 'donhang', 'shipping', 'do', 'nay', 'kia', 'no', 'cai', 'moi', 'nhat',\n    'gan', 'truoc', 'vua', 'roi', 'ticket', 'case', 'lead', 've', 'yeu', 'cau'\n  ]);\n\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    return true;\n  });\n\n  return filteredTokens\n    .map((token) => {\n      const normalizedToken = normalizeText(token);\n      return /^\\d+$/.test(normalizedToken) ? normalizedToken : token;\n    })\n    .join(' ')\n    .trim();\n};\n\nconst extractInventoryLookup = (value) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}\"']/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n\n  const fillerTokens = new Set([\n    'check', 'kiem', 'tra', 'ton', 'kho', 'con', 'hang', 'khong', 'ko', 'hong', 'het', 'chua',\n    'lay', 'xem', 'giup', 'dum', 'cho', 'toi', 'xin', 'nhe', 'nha', 'di', 'voi', 'co', 'ma', 'mau',\n    'nay', 'kia', 'do', 'cua', 'shop', 'inventory', 'stock', 'san', 'pham', 'sp'\n  ]);\n\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    return true;\n  });\n\n  return filteredTokens\n    .map((token) => {\n      const normalizedToken = normalizeText(token);\n      return /^\\d+$/.test(normalizedToken) ? normalizedToken : token;\n    })\n    .join(' ')\n    .trim();\n};\n\nconst extractReason = (value, ticketId) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}\"']/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n  const ticketText = String(ticketId || '').trim();\n  const fillerTokens = new Set(['reject', 'tu', 'choi', 'xem', 'tat', 'ca', 'danh', 'sach', 'ticket', 'don', 'ma', 'lenh', 't', 'no', 'do', 'cai', 'nay']);\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    if (ticketText && normalizedToken === ticketText) return false;\n    if (ticketText && normalizedToken === ('t' + ticketText)) return false;\n    return true;\n  });\n  return filteredTokens.join(' ').trim();\n};\n\nconst buildLookupCandidates = (...values) => {\n  const candidates = [];\n  const seen = new Set();\n\n  const pushCandidate = (value) => {\n    const rawValue = String(value || '').trim();\n    if (!rawValue) return;\n\n    const variants = [extractLookup(rawValue), rawValue];\n    for (const variant of variants) {\n      const candidate = String(variant || '').trim();\n      const normalized = normalizeText(candidate);\n      const compressed = compressText(candidate);\n      if (!normalized || !compressed) continue;\n      if (['viewer', 'sales', 'manager'].includes(normalized)) continue;\n      if (seen.has(compressed)) continue;\n      seen.add(compressed);\n      candidates.push(candidate);\n    }\n  };\n\n  for (const value of values.flat()) {\n    pushCandidate(value);\n  }\n\n  return candidates;\n};\n\nconst aiToolNameRaw = String(parsed.tool_name || parsed.command_name || 'unknown').trim().toLowerCase();\nconst aiToolName = allowedTools.has(aiToolNameRaw) ? aiToolNameRaw : 'unknown';\nconst aiShouldRoute = parsed.should_route === true;\nconst aiReplyText = String(parsed.reply_text || '').trim();\nconst aiLookupValue = String(parsed.lookup_value || '').trim();\nconst aiRoleValue = extractRole(parsed.role_value);\nconst aiReasonText = String(parsed.reason_text || '').trim();\nconst aiTicketScope = normalizeTicketScope(parsed.ticket_scope);\nconst aiCityQuery = String(parsed.city_query || '').trim();\nconst aiDistrictQuery = String(parsed.district_query || '').trim();\nconst aiMaxResults = Math.max(1, Math.min(10, Number(parsed.max_results || 5) || 5));\n\nconst draftToolNameRaw = String(base.tool_name || base.command_name || 'unknown').trim().toLowerCase();\nconst draftToolName = allowedTools.has(draftToolNameRaw) ? draftToolNameRaw : 'unknown';\nconst draftReplyText = String(base.reply_text || '').trim();\nconst draftLookupValue = String(base.lookup_value || '').trim();\nconst draftRoleValue = extractRole(base.role_value);\nconst draftReasonText = String(base.reason_text || '').trim();\nconst draftShouldRoute = base.should_route_command === true && draftToolName !== 'unknown';\nconst draftTicketScope = normalizeTicketScope(base.ticket_scope);\n\nlet ticketIdFromAI = extractTicketId(parsed.ticket_id);\nconst ticketIdFromDraft = extractTicketId(base.ticket_id);\nconst ticketMatchFromText =\n  originalText.match(/(?:^|\\b)(?:ticket|don|ve|lead|yeu cau|case|ma|lenh)?\\s*t\\s*[-:#]?\\s*(\\d+)(?:\\b|$)/i) ||\n  originalText.match(/(?:^|\\b)(?:ticket|don|ve|lead|yeu cau|case)\\s*[-:#]?\\s*(\\d+)(?:\\b|$)/i) ||\n  originalText.match(/(?:^|\\b)t\\s*[-:#]?\\s*(\\d+)(?:\\b|$)/i);\nconst ticketIdFromText = ticketMatchFromText ? extractTicketId(ticketMatchFromText[0]) : null;\nconst explicitLocalTicketMatch =\n  originalText.match(/(?:^|\\b)(?:ticket|case|lead|ve|yeu cau)\\s*(?:t\\s*[-:#]?\\s*)?(\\d+)(?:\\b|$)/i) ||\n  originalText.match(/(?:^|\\b)t\\s*[-:#]?\\s*(\\d+)(?:\\b|$)/i);\nconst explicitLocalTicketId = explicitLocalTicketMatch ? extractTicketId(explicitLocalTicketMatch[0]) : null;\nconst looseNumberMatch = originalText.match(/(?:^|\\s)(\\d+)(?:\\s|$)/);\nconst looseTicketIdFromText = looseNumberMatch ? extractTicketId(looseNumberMatch[1]) : null;\nconst latestTicketIdFromContext =\n  extractTicketId(base.latest_ticket_id) ??\n  extractTicketId(base.latest_open_ticket_id) ??\n  extractTicketId(recentTicketActions[0]?.ticket_id) ??\n  extractTicketId(openTickets[0]?.id);\nconst singleOpenTicketId = openTickets.length === 1 ? extractTicketId(openTickets[0]?.id) : null;\nconst findOpenTicketProduct = (candidateTicketId) => {\n  const ticketId = extractTicketId(candidateTicketId);\n  if (!ticketId) return '';\n  const matchedTicket = openTickets.find((item) => extractTicketId(item?.id) === ticketId);\n  return String(matchedTicket?.products_interested || matchedTicket?.need_summary || '').trim();\n};\n\nlet ticketId = ticketIdFromAI ?? ticketIdFromDraft ?? ticketIdFromText ?? looseTicketIdFromText;\nconst normalizedOriginalText = normalizeText(originalText);\nconst derivedTicketScope = deriveTicketScope(originalText);\nconst contextTicketReferencePatterns = [\n  /(?:ticket|don|ve|lead|yeu cau|case)\\s+(?:do|nay|kia|moi nhat|gan nhat|vua roi|truoc do)/,\n  /(?:^|\\s)(?:xem|check|mo|lay|chi tiet|thong tin|trang thai)\\s+(?:ticket|don|ve|lead|yeu cau|case)\\s+(?:do|nay|kia|moi nhat|gan nhat|vua roi|truoc do)(?:\\s|$)/,\n  /(?:^|\\s)(?:ticket|don|ve|lead|yeu cau|case)\\s+(?:moi nhat|gan nhat)(?:\\s|$)/\n];\nconst contextRejectPatterns = [\n  /(?:^|\\s)(?:reject|tu choi|loai bo|huy)(?:\\s|$)/,\n  /(?:^|\\s)(?:reject|tu choi|loai bo|huy)\\s+(?:ticket|don|ve|lead|yeu cau|case|no|do|cai do|cai nay)(?:\\s|$)/\n];\nconst contextTrackingPatterns = [\n  /(?:tracking|link tracking|url tracking|lich trinh)\\s+(?:ticket|don|ve|lead|case)\\s+(?:do|nay|kia|moi nhat|gan nhat|vua roi|truoc do)/,\n  /(?:tracking|link tracking|url tracking|lich trinh)\\s+(?:ticket|don|ve|lead|case)\\s+(?:moi nhat|gan nhat)(?:\\s|$)/\n];\nconst contextTicketRequested = contextTicketReferencePatterns.some((pattern) => pattern.test(normalizedOriginalText));\nconst semanticListTicketPatterns = [\n  /(?:^|\\s)(?:xem|check|list|danh sach)?\\s*(?:tat ca|toan bo|het)(?:\\s|$)/,\n  /(?:^|\\s)(?:dang co|hien co|con|co)\\s+(?:ticket|don|ve|lead|yeu cau|case)\\s+nao(?:\\s+khong)?(?:\\s|$)/,\n  /danh sach\\s+(?:ticket|don|ve|lead|yeu cau|case)/,\n  /xem\\s+(?:het|toan bo)?\\s*(?:cac\\s+)?(?:ticket|don|ve|lead|yeu cau|case)/,\n  /co gi can\\s+(?:xu ly|goi|follow|chot)/,\n  /co gi moi/,\n  /co gi dang mo/\n];\nconst semanticWorkQueuePatterns = [\n  /(?:^|\\s)(?:dang co|hien co|con|co)\\s+(?:khach|khach hang|case)\\s+nao(?:\\s+(?:can|de|dang))?\\s*(?:xu ly|goi|follow|chot|mo|pending)?(?:\\s+khong)?(?:\\s|$)/,\n  /(?:^|\\s)(?:khach|khach hang|lead|case)\\s+nao\\s+(?:can|de|dang)\\s*(?:xu ly|goi|follow|chot|mo|pending)(?:\\s|$)/,\n  /(?:^|\\s)(?:lead|case)\\s+(?:nao\\s+)?(?:dang mo|cho xu ly|pending|moi)(?:\\s|$)/,\n  /(?:^|\\s)(?:co|con)\\s+(?:khach moi|lead moi|case moi)(?:\\s|$)/,\n  /(?:^|\\s)(?:co gi|con gi)\\s+(?:can|phai)?\\s*(?:xu ly|goi|follow|chot|mo|pending)(?:\\s|$)/\n];\nconst semanticGetTicketPatterns = [\n  /(?:xem|check|chi tiet|thong tin|trang thai)\\s+(?:ticket|don|ve|lead|yeu cau|case)/,\n  /(?:^|\\s)(?:co|check|xem)\\s+(?:ticket|don|ve|lead|yeu cau|case)\\s+t\\s*-?\\s*\\d+/,\n  /(?:ticket|don|ve|lead|yeu cau|case)\\s*(?:t\\s*-?\\s*\\d+|\\d+)/,\n  /(?:ticket|don|ve|lead|yeu cau|case)\\s+(?:do|nay|kia|moi nhat|gan nhat|vua roi|truoc do)/\n];\nconst semanticTrackingPatterns = [\n  /tracking/,\n  /link tracking/,\n  /url tracking/,\n  /lich trinh/,\n  /tra cuu van don/,\n  /ma van don/,\n  /link van chuyen/,\n  /kiem tra giao hang/\n];\nconst contextInventoryPatterns = [\n  /(?:ton kho|con hang|het hang|con size|stock|inventory)\\s+(?:ticket|don|ve|lead|case)\\s+(?:do|nay|kia|moi nhat|gan nhat|vua roi|truoc do)/,\n  /(?:ticket|don|ve|lead|case)\\s+(?:do|nay|kia|moi nhat|gan nhat)(?:\\s|$).*(?:ton kho|con hang|het hang|con size|stock|inventory)/\n];\nconst semanticInventoryPatterns = [\n  /ton kho/,\n  /kiem tra ton kho/,\n  /check ton kho/,\n  /con hang/,\n  /het hang/,\n  /con size/,\n  /stock/,\n  /inventory/,\n  /size\\s*\\d+(?:[.,]\\d+)?\\s+(?:con|het)/\n];\nconst semanticRejectTicket = contextRejectPatterns.some((pattern) => pattern.test(normalizedOriginalText));\nconst semanticListTicket = semanticListTicketPatterns.some((pattern) => pattern.test(normalizedOriginalText));\nconst semanticWorkQueue = semanticWorkQueuePatterns.some((pattern) => pattern.test(normalizedOriginalText));\nconst semanticGetTicket = semanticGetTicketPatterns.some((pattern) => pattern.test(normalizedOriginalText));\nconst semanticTracking = semanticTrackingPatterns.some((pattern) => pattern.test(normalizedOriginalText));\nconst semanticInventory = semanticInventoryPatterns.some((pattern) => pattern.test(normalizedOriginalText));\nconst contextTrackingRequested = contextTrackingPatterns.some((pattern) => pattern.test(normalizedOriginalText));\nconst contextInventoryRequested = contextInventoryPatterns.some((pattern) => pattern.test(normalizedOriginalText));\n\nif (!ticketId && (contextTicketRequested || semanticRejectTicket || contextTrackingRequested || contextInventoryRequested)) {\n  ticketId = latestTicketIdFromContext ?? singleOpenTicketId ?? null;\n}\n\nconst lookupCandidates = buildLookupCandidates(\n  mentionUserIds,\n  aiLookupValue,\n  draftLookupValue,\n  extractLookup(originalText)\n);\nconst trackingLookupCandidates = buildLookupCandidates(\n  aiLookupValue,\n  draftLookupValue,\n  extractTrackingLookup(originalText),\n  mentionUserIds\n);\nconst inventoryLookupCandidates = buildLookupCandidates(\n  aiLookupValue,\n  draftLookupValue,\n  extractInventoryLookup(originalText)\n);\n\nlet toolName = aiToolName !== 'unknown' ? aiToolName : draftToolName;\nlet routeSource = aiToolName !== 'unknown' ? 'ai' : (draftToolName !== 'unknown' ? 'draft_fallback' : 'ai');\nlet lookupValue = lookupCandidates[0] || '';\nlet roleValue = aiRoleValue || draftRoleValue || extractRole(originalText) || '';\nlet reasonText = aiReasonText || draftReasonText || '';\nlet ticketScope = aiTicketScope || draftTicketScope || '';\nlet cityQuery = aiCityQuery || String(base.city_query || '').trim();\nlet districtQuery = aiDistrictQuery || String(base.district_query || '').trim();\nlet maxResults = aiMaxResults;\nlet productQuery = '';\nlet commandArgsText = '';\nlet argsJson = [];\nlet shouldRoute = false;\nlet replyText = aiReplyText || draftReplyText;\nlet semanticResolved = false;\n\nif (toolName === 'unknown') {\n  if (semanticInventory) {\n    toolName = 'check_inventory';\n    routeSource = 'semantic_fallback';\n    semanticResolved = true;\n  } else if (semanticTracking) {\n    toolName = 'tracking_url';\n    routeSource = 'semantic_fallback';\n    semanticResolved = true;\n  } else if (semanticListTicket || semanticWorkQueue) {\n    toolName = 'list_tickets';\n    routeSource = 'semantic_fallback';\n    semanticResolved = true;\n  } else if (semanticGetTicket && (ticketId || latestTicketIdFromContext || singleOpenTicketId)) {\n    toolName = 'get_ticket';\n    routeSource = 'semantic_fallback';\n    semanticResolved = true;\n  } else if (semanticRejectTicket && (ticketId || latestTicketIdFromContext || singleOpenTicketId)) {\n    toolName = 'reject_ticket';\n    routeSource = 'semantic_fallback';\n    semanticResolved = true;\n  }\n}\n\nif (!ticketId && ['get_ticket', 'reject_ticket', 'tracking_url', 'check_inventory'].includes(toolName)) {\n  if (contextTicketRequested || semanticRejectTicket || contextTrackingRequested || (openTickets.length === 1 && /(?:ticket|don|ve|lead|yeu cau|case)/.test(normalizedOriginalText))) {\n    ticketId = latestTicketIdFromContext ?? singleOpenTicketId ?? null;\n  }\n}\n\nif (!reasonText && toolName === 'reject_ticket') {\n  reasonText = extractReason(originalText, ticketId || latestTicketIdFromContext || singleOpenTicketId || '');\n}\n\nif (!ticketScope && toolName === 'list_tickets') {\n  ticketScope = derivedTicketScope || 'open';\n}\n\nif (toolName === 'add_order') {\n  shouldRoute = /^\\/+addorder\\b/i.test(originalText);\n}\nif (toolName === 'check_inventory') {\n  if (!ticketId && contextInventoryRequested) {\n    ticketId = latestTicketIdFromContext ?? singleOpenTicketId ?? null;\n  }\n  productQuery = String(aiLookupValue || draftLookupValue || inventoryLookupCandidates[0] || '').trim();\n  if (!productQuery && ticketId) {\n    productQuery = findOpenTicketProduct(ticketId);\n  }\n  lookupValue = productQuery;\n}\n\nif (toolName === 'tracking_url') {\n  const aiLookup = String(aiLookupValue || '').trim();\n  const draftLookup = String(draftLookupValue || '').trim();\n  lookupValue = trackingLookupCandidates[0] || aiLookup || draftLookup || '';\n\n  if (ticketId && !explicitLocalTicketId && !contextTrackingRequested && String(ticketId).length >= 6) {\n    lookupValue = lookupValue || String(ticketId);\n    ticketId = null;\n  }\n\n  if (explicitLocalTicketId) {\n    ticketId = explicitLocalTicketId;\n    lookupValue = lookupValue && /^\\d{6,}$/.test(onlyDigits(lookupValue)) ? lookupValue : '';\n  }\n\n  if (!lookupValue && !ticketId) {\n    const directPhone = onlyDigits(originalText);\n    if (directPhone.length >= 10 && directPhone.length <= 11) {\n      lookupValue = directPhone;\n    }\n  }\n}\n\nif (['help', 'list_tickets', 'members', 'add_member', 'approve_member', 'remove_member', 'add_admin', 'remove_admin'].includes(toolName)) {\n  shouldRoute = semanticResolved || aiShouldRoute || draftShouldRoute || toolName === draftToolName;\n}\nif (toolName === 'get_ticket') {\n  shouldRoute = Number.isInteger(ticketId) && ticketId > 0;\n}\nif (toolName === 'check_inventory') {\n  shouldRoute = Boolean(String(productQuery || '').trim() || (Number.isInteger(ticketId) && ticketId > 0));\n}\nif (toolName === 'tracking_url') {\n  shouldRoute = Boolean((Number.isInteger(ticketId) && ticketId > 0) || String(lookupValue || '').trim());\n}\nif (toolName === 'reject_ticket') {\n  shouldRoute = Number.isInteger(ticketId) && ticketId > 0 && Boolean(reasonText);\n}\n\nif (toolName === 'list_tickets') {\n  commandArgsText = ticketScope || 'open';\n  argsJson = [ticketScope || 'open'];\n} else if (toolName === 'add_order') {\n  commandArgsText = String(originalText.replace(/^\\/+addorder\\b/i, '').trim());\n  argsJson = commandArgsText ? commandArgsText.split(/\\s+/) : [];\n} else if (toolName === 'check_inventory') {\n  lookupValue = productQuery;\n  commandArgsText = ticketId ? ('T-' + ticketId) : productQuery;\n  argsJson = commandArgsText ? [commandArgsText] : [];\n} else if (toolName === 'approve_member') {\n  commandArgsText = [lookupValue, roleValue].filter(Boolean).join(' ').trim();\n  argsJson = [lookupValue, roleValue].filter(Boolean);\n} else if (['add_member', 'remove_member', 'add_admin', 'remove_admin'].includes(toolName)) {\n  commandArgsText = lookupValue;\n  argsJson = lookupValue ? [lookupValue] : [];\n} else if (toolName === 'get_ticket' && ticketId) {\n  lookupValue = String(ticketId);\n  commandArgsText = String(ticketId);\n  argsJson = [String(ticketId)];\n} else if (toolName === 'tracking_url') {\n  commandArgsText = ticketId ? ('T-' + ticketId) : lookupValue;\n  argsJson = commandArgsText ? [commandArgsText] : [];\n} else if (toolName === 'reject_ticket') {\n  lookupValue = ticketId ? String(ticketId) : lookupValue;\n  commandArgsText = [ticketId ? String(ticketId) : '', reasonText].filter(Boolean).join(' ').trim();\n  argsJson = [ticketId ? String(ticketId) : '', reasonText].filter(Boolean);\n}\n\nif (toolName !== 'reject_ticket') {\n  reasonText = '';\n}\n\nif (shouldRoute && ['tracking_url'].includes(toolName)) {\n  replyText = '';\n}\n\nif (!shouldRoute) {\n  if (toolName === 'check_inventory' || draftToolName === 'check_inventory' || aiToolName === 'check_inventory' || semanticInventory || contextInventoryRequested) {\n    replyText = replyText || 'Bạn muốn check tồn kho mẫu nào?';\n  } else if (toolName === 'get_ticket' || draftToolName === 'get_ticket' || aiToolName === 'get_ticket' || semanticGetTicket || contextTicketRequested || /(^|\\s)(ticket|don|ve|lead|yeu cau|case)(\\s|$)/.test(normalizedOriginalText)) {\n    replyText = replyText || 'Bạn muốn xem ticket nào?';\n  } else if (toolName === 'tracking_url' || draftToolName === 'tracking_url' || aiToolName === 'tracking_url' || semanticTracking || contextTrackingRequested) {\n    replyText = replyText || 'Bạn muốn lấy tracking cho đơn nào?';\n  } else if (toolName === 'reject_ticket' || draftToolName === 'reject_ticket' || aiToolName === 'reject_ticket' || semanticRejectTicket) {\n    if (!ticketId) {\n      replyText = replyText || 'Bạn muốn reject ticket nào?';\n    } else if (!reasonText) {\n      replyText = replyText || 'Thiếu lý do reject.';\n    }\n  } else if (aiToolName === 'unknown' && draftToolName === 'unknown' && !replyText) {\n    replyText = '';\n  }\n  if (!replyText && toolName !== 'unknown') {\n    replyText = 'Bạn nói rõ hơn giúp mình.';\n  }\n  if (!shouldRoute) {\n    toolName = replyText ? toolName : 'unknown';\n  }\n}\n\nreturn [{\n  json: {\n    ...base,\n    ai_raw_output: text,\n    route_source: routeSource,\n    command_text: originalText,\n    tool_name: toolName,\n    command_name: toolName,\n    command_args_text: commandArgsText,\n    args_json: argsJson,\n    role_value: roleValue,\n    reason_text: reasonText,\n    ticket_id: ticketId || null,\n    ticket_scope: ticketScope || '',\n    latest_context_ticket_id: latestTicketIdFromContext || null,\n    lookup_value: lookupValue,\n    product_query: productQuery,\n    city_query: cityQuery,\n    district_query: districtQuery,\n    max_results: maxResults,\n    lookup_candidates: toolName === 'tracking_url' ? trackingLookupCandidates : (toolName === 'check_inventory' ? inventoryLookupCandidates : lookupCandidates),\n    ticket_ref_raw: ticketId ? ('T-' + ticketId) : '',\n    reply_text: replyText,\n    should_route_command: shouldRoute,\n    needs_ai_router: false,\n  },\n}];"
+      },
+      "id": "0bee4438-2957-47b1-af4c-704db9f40a1c",
+      "name": "Code Normalize Zalo Natural Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        65616,
+        26128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const toolName = String($json.tool_name || $json.command_name || '').trim();\nconst fallbackReply = String($json.reply_text || '').trim();\n\nconst routeMap = {\n  help: { route_key: 'help', handler_name: 'reply_help', required_app_role: 'viewer' },\n  list_tickets: { route_key: 'list_tickets', handler_name: 'handle_list_tickets', required_app_role: 'viewer' },\n  get_ticket: { route_key: 'get_ticket', handler_name: 'handle_get_ticket', required_app_role: 'viewer' },\n  tracking_url: { route_key: 'tracking_url', handler_name: 'handle_tracking_url', required_app_role: 'viewer' },\n  check_inventory: { route_key: 'check_inventory', handler_name: 'reply_inventory', required_app_role: 'viewer' },\n  members: { route_key: 'members', handler_name: 'handle_members', required_app_role: 'viewer' },\n  add_member: { route_key: 'add_member', handler_name: 'reply_add_member', required_app_role: 'viewer' },\n  approve_member: { route_key: 'approve_member', handler_name: 'handle_approve_member', required_app_role: 'viewer' },\n  remove_member: { route_key: 'remove_member', handler_name: 'handle_remove_member', required_app_role: 'viewer' },\n  add_admin: { route_key: 'add_admin', handler_name: 'handle_add_admin', required_app_role: 'viewer' },\n  remove_admin: { route_key: 'remove_admin', handler_name: 'handle_remove_admin', required_app_role: 'viewer' },\n  reject_ticket: { route_key: 'reject_ticket', handler_name: 'handle_reject_ticket', required_app_role: 'viewer' },\n  add_order: { route_key: 'add_order', handler_name: 'handle_add_order', required_app_role: 'sales' },\n};\n\nlet route = null;\nif ($json.should_route_command === true && routeMap[toolName]) {\n  route = routeMap[toolName];\n} else if (fallbackReply) {\n  route = { route_key: 'fallback', handler_name: 'reply_fallback', required_app_role: 'viewer' };\n}\n\nreturn [{\n  json: {\n    ...$json,\n    ...(route || { route_key: 'ignore', handler_name: 'ignore_event', required_app_role: 'viewer' }),\n    has_route: Boolean(route),\n  },\n}];"
+      },
+      "id": "5543b368-db68-4169-a7db-de2210169dc2",
+      "name": "Resolve Zalo Command Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        65840,
+        27424
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.has_route === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "14d4b4fa-72c3-452a-b19e-ca15364880ce",
+      "name": "If Has Zalo Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        66064,
+        27424
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const actorDisplayName = String($json.sender_display_name || '').trim();\n\nreturn [{\n  json: {\n    ...$json,\n    actor_app_role: 'group_member',\n    actor_display_name: actorDisplayName,\n    member_active: true,\n    command_allowed: true,\n  },\n}];"
+      },
+      "id": "9a72ec88-2c23-447f-9f4c-5d5e50ab6286",
+      "name": "Code Resolve Zalo Command Permission",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        66288,
+        27360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  coalesce(tok.access_token, '') as access_token\nfrom (select 1 as seed) s\nleft join lateral (\n  select access_token\n  from public.zalo_oa_tokens\n  where token_key = 'oa_main'\n  order by updated_at desc nulls last\n  limit 1\n) tok on true;",
+        "options": {}
+      },
+      "id": "913d48d0-58fa-4d0b-b3ad-d2beb9484628",
+      "name": "PG Get Zalo OA Reply Token",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        66512,
+        25984
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "5c2ff541-a281-40db-8026-eac6565e634b",
+      "name": "Merge Zalo Command + Token",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        66736,
+        27360
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ ['help', 'add_member', 'fallback'].includes(String($json.route_key || '')) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c8402b6a-daec-40e2-b5b8-1eaf71073549",
+      "name": "If Static Reply Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        66960,
+        27360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const routeKey = String($json.route_key || '').trim();\nconst lookupValue = String($json.lookup_value || '').trim();\nlet replyText = '';\nlet auditActionType = 'fallback_replied';\n\nif (routeKey === 'help') {\n  replyText = [\n    'Lệnh:',\n    '/help',\n    '/list-tickets',\n    '/ticket <ticket_id>',\n    '/tracking <T-id|mã đơn|sđt>',\n    '/inventory <sản phẩm>',\n    '/addorder <t-id> <nội dung>',\n    '/addorder show <t-id>',\n    '/addorder confirm <t-id>',\n    '/reject <ticket_id> <lý do>',\n    '/members',\n    '/approve-member <tên|user_id> [viewer|sales|manager]',\n    '/remove-member <tên|user_id>',\n    '/add-admin <tên|user_id>',\n    '/remove-admin <tên|user_id>',\n    'Ví dụ: xem tất cả, tracking đơn 755684682, inventory altra timp 5 size 42, /addorder t-3 tên Hải 0387803007, duyệt Quế sales',\n  ].join('\\n');\n  auditActionType = 'help_viewed';\n} else if (routeKey === 'add_member') {\n  replyText = [\n    lookupValue ? ('Thêm ' + lookupValue + ':') : 'Thêm thành viên:',\n    'Mời vào nhóm trước.',\n    'Sau đó nhắn: duyệt <tên> sales.',\n  ].filter(Boolean).join('\\n');\n  auditActionType = 'member_add_guided';\n} else {\n  replyText = String($json.reply_text || 'Không hiểu yêu cầu. Dùng /help.').trim();\n  auditActionType = String($json.audit_action_type || 'fallback_replied').trim() || 'fallback_replied';\n}\n\nreturn [{\n  json: {\n    ...$json,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: '',\n  },\n}];"
+      },
+      "id": "0b6c8faf-da36-445f-a8f0-f9cf02192165",
+      "name": "Code Build Static Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        26016
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'get_ticket' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "22ac2ffe-fcb0-41fa-893c-30e53bc8c6a0",
+      "name": "If Get Ticket Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        67856,
+        27792
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  (t.id is not null) as found,\n  row_to_json(t) as ticket\nfrom (select 1 as seed) s\nleft join lateral (\n  select\n    id,\n    status,\n    fullname,\n    phone,\n    products_interested,\n    need_summary,\n    handoff_reason,\n    claimed_by_display_name,\n    claimed_at,\n    closed_by_display_name,\n    closed_at,\n    created_at\n  from public.lead_handoff_queue\n  where id = $1::bigint\n    and (nullif($2::text, '') is null or group_id = nullif($2::text, ''))\n  limit 1\n) t on true;",
+        "options": {
+          "queryReplacement": "={{ [ Number($json.ticket_id || 0), $json.group_id || '' ] }}"
+        }
+      },
+      "id": "e3bff072-d519-42a9-a9d8-16e8f6224f00",
+      "name": "PG Load Ticket Detail",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        70096,
+        26976
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first()?.json || {};\nlet ticket = row.ticket;\nif (typeof ticket === 'string') {\n  try {\n    ticket = JSON.parse(ticket);\n  } catch {\n    ticket = null;\n  }\n}\n\nconst ticketId = Number(row.ticket_id || 0) || Number($('If Get Ticket Route').first().json.ticket_id || 0) || 0;\nconst formatTime = (value) => value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false }) : '';\nlet replyText = '';\nlet auditActionType = 'ticket_viewed';\nlet handoffQueueId = ticketId || '';\n\nif (!row.found || !ticket || !ticket.id) {\n  replyText = 'Không thấy ticket T-' + ticketId + '.';\n  auditActionType = 'ticket_not_found';\n} else {\n  handoffQueueId = ticket.id;\n  const lines = [\n    'Ticket T-' + ticket.id,\n    'Trạng thái: ' + (ticket.status || 'chưa rõ'),\n    ticket.fullname ? 'Khách: ' + ticket.fullname : '',\n    ticket.phone ? 'SĐT: ' + ticket.phone : '',\n    ticket.products_interested ? 'Sản phẩm: ' + ticket.products_interested : '',\n    ticket.need_summary ? 'Nhu cầu: ' + ticket.need_summary : '',\n    ticket.handoff_reason ? 'Lý do: ' + ticket.handoff_reason : '',\n    ticket.claimed_by_display_name ? 'Đã nhận: ' + ticket.claimed_by_display_name : '',\n    ticket.closed_by_display_name ? 'Đã đóng: ' + ticket.closed_by_display_name : '',\n    ticket.created_at ? 'Tạo: ' + formatTime(ticket.created_at) : '',\n  ].filter(Boolean);\n  replyText = lines.join('\\n');\n}\n\nreturn [{\n  json: {\n    ...$('If Get Ticket Route').first().json,\n    ...row,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: handoffQueueId,\n  },\n}];"
+      },
+      "id": "973ac8f4-f169-46f5-b0c8-a8bda6404304",
+      "name": "Code Format Get Ticket Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        26976
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'members' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e2b695a1-6178-482a-9fc5-29a8aae79817",
+      "name": "If Members Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        68080,
+        27888
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://openapi.zalo.me/v3.0/oa/group/listpendinginvite",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "group_id",
+              "value": "={{ $json.group_id }}"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            },
+            {
+              "name": "count",
+              "value": "5"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cbca85e1-f1d2-4117-800f-7adcfde3b370",
+      "name": "HTTP List Zalo Group Pending Invite Members",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        70096,
+        27216
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Members Route').first().json;\nconst pendingRow = $('HTTP List Zalo Group Pending Invite Members').first().json || {};\n\nconst parseJson = (value) => {\n  if (typeof value !== 'string') return value;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return value;\n  }\n};\nconst normalizeText = (value) => String(value || '').trim();\nconst pickText = (obj, keys) => {\n  for (const key of keys) {\n    const text = normalizeText(obj?.[key]);\n    if (text) return text;\n  }\n  return '';\n};\n\nconst rawPending = parseJson(pendingRow.data ?? pendingRow);\nconst pendingSource = parseJson(rawPending?.data ?? rawPending);\nconst candidateArrays = [\n  pendingSource,\n  pendingSource?.items,\n  pendingSource?.members,\n  pendingSource?.users,\n  pendingSource?.invites,\n  pendingSource?.pending_members,\n  pendingSource?.pending_invites,\n  pendingSource?.pendingInvites,\n  rawPending?.items,\n  rawPending?.members,\n  rawPending?.users,\n  rawPending?.invites,\n  rawPending?.pending_members,\n  rawPending?.pending_invites,\n  rawPending?.pendingInvites,\n];\nlet pendingInvites = [];\nfor (const candidate of candidateArrays) {\n  const parsed = parseJson(candidate);\n  if (Array.isArray(parsed)) {\n    pendingInvites = parsed;\n    break;\n  }\n}\n\nconst pending = pendingInvites.map((item) => {\n  const invite = parseJson(item) || {};\n  const nestedObjects = [\n    invite,\n    invite.user,\n    invite.member,\n    invite.invitee,\n    invite.invited_user,\n    invite.profile,\n  ].filter((value) => value && typeof value === 'object');\n\n  const pickNestedText = (keys) => {\n    for (const obj of nestedObjects) {\n      const text = pickText(obj, keys);\n      if (text) return text;\n    }\n    return '';\n  };\n\n  return {\n    user_id: pickNestedText(['user_id', 'uid', 'id', 'invitee_id', 'member_id', 'userId', 'inviteeId', 'memberId']),\n    display_name: pickNestedText(['display_name', 'name', 'full_name', 'user_name', 'displayName', 'fullName']),\n  };\n}).filter((item) => item.user_id || item.display_name);\n\nconst message = normalizeText(pendingRow.message || rawPending?.message || pendingSource?.message || pendingRow.error || rawPending?.error || pendingSource?.error);\nconst errorCandidates = [\n  pendingRow?.error,\n  pendingRow?.err,\n  pendingRow?.error_code,\n  rawPending?.error,\n  rawPending?.err,\n  rawPending?.error_code,\n  rawPending?.code,\n  pendingSource?.error,\n  pendingSource?.err,\n  pendingSource?.error_code,\n  pendingSource?.code,\n].map((value) => Number(value)).filter((value) => Number.isFinite(value));\nconst apiErrorCode = errorCandidates.length ? errorCandidates[0] : null;\nconst pendingApiWarning = (apiErrorCode !== null && apiErrorCode !== 0)\n  ? (message || ('Lỗi API: ' + apiErrorCode))\n  : '';\n\nconst lines = ['Chờ duyệt: ' + pending.length];\n\nif (pending.length) {\n  const labels = pending.slice(0, 5).map((item) => {\n    const userId = normalizeText(item.user_id);\n    const name = normalizeText(item.display_name);\n    return name && userId ? (name + ' | ' + userId) : (name || userId);\n  }).filter(Boolean);\n  lines.push('Danh sách: ' + labels.join(', '));\n  lines.push('Duyệt: phê duyệt <tên> sales');\n} else {\n  lines.push('Không có ai chờ duyệt.');\n}\n\nif (pendingApiWarning) {\n  lines.push(pendingApiWarning);\n}\n\nlines.push('Xoá: xóa <tên>');\nlines.push('Thêm: mời vào nhóm trước.');\n\nreturn [{\n  json: {\n    ...base,\n    pending_api_warning: pendingApiWarning,\n    pending_items: pending,\n    reply_text: lines.join('\\n'),\n    audit_action_type: 'members_viewed',\n    handoff_queue_id: '',\n  },\n}];"
+      },
+      "id": "5841f746-9a5b-444d-9283-e209d9cedba0",
+      "name": "Code Format Members Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        27216
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'approve_member' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "918a3dc0-c967-4589-b5cb-e873930e7845",
+      "name": "If Approve Member Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        68304,
+        27984
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://openapi.zalo.me/v3.0/oa/group/listpendinginvite",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "group_id",
+              "value": "={{ $json.group_id }}"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            },
+            {
+              "name": "count",
+              "value": "5"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bcbac151-023c-4f2c-8a6b-06407dd886bd",
+      "name": "HTTP List Zalo Group Pending Invite Approve",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        69200,
+        27472
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Approve Member Route').first().json;\n\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst compressText = (value) => normalizeText(value).replace(/\\s+/g, '');\nconst parseJson = (value) => {\n  if (typeof value !== 'string') return value;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return value;\n  }\n};\nconst pickText = (obj, keys) => {\n  for (const key of keys) {\n    const value = obj?.[key];\n    const text = String(value ?? '').trim();\n    if (text) return text;\n  }\n  return '';\n};\nconst extractLookup = (value) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}\"']/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n\n  const fillerTokens = new Set([\n    'phe', 'duyet', 'approve', 'help', 'xem', 'check', 'ticket', 'don', 'member', 'thanh', 'vien',\n    'them', 'moi', 'vao', 'nhom', 'group', 'link', 'giup', 'dum', 'cho', 'kich', 'hoat', 'mo',\n    'quyen', 'ban', 'nay', 'nhe', 'nha', 'di', 'voi', 'dang', 'cho', 'nguoi', 'ten', 'anh', 'chi',\n    'em', 'oi', 'giu', 'ho', 'gium', 'a', 'ah', 'ha'\n  ]);\n\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (['viewer', 'sales', 'manager'].includes(normalizedToken)) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    return true;\n  });\n\n  return filteredTokens.join(' ').trim();\n};\nconst buildLookupCandidates = (...values) => {\n  const candidates = [];\n  const seen = new Set();\n\n  const pushCandidate = (value) => {\n    const rawValue = String(value || '').trim();\n    if (!rawValue) return;\n\n    const variants = [extractLookup(rawValue), rawValue];\n    for (const variant of variants) {\n      const candidate = String(variant || '').trim();\n      const normalized = normalizeText(candidate);\n      const compressed = compressText(candidate);\n      if (!normalized || !compressed) continue;\n      if (['viewer', 'sales', 'manager'].includes(normalized)) continue;\n      if (seen.has(compressed)) continue;\n      seen.add(compressed);\n      candidates.push(candidate);\n    }\n  };\n\n  for (const value of values.flat()) {\n    pushCandidate(value);\n  }\n\n  return candidates;\n};\n\nconst roleRaw = normalizeText(base.role_value || '');\nif (roleRaw && !['viewer', 'sales', 'manager'].includes(roleRaw)) {\n  return [{\n    json: {\n      ...base,\n      result: 'invalid_role',\n      desired_role: roleRaw,\n      lookup_value: String(base.lookup_value || '').trim(),\n      lookup_candidates: Array.isArray(base.lookup_candidates) ? base.lookup_candidates : [],\n      candidates: [],\n    },\n  }];\n}\n\nconst desiredRole = roleRaw || 'sales';\nconst rawInput = parseJson($json?.data ?? $json ?? {});\nconst source = parseJson(rawInput?.data ?? rawInput);\nconst message = String($json?.message || rawInput?.message || $json?.error || rawInput?.error || '').trim();\nconst errorCandidates = [\n  $json?.error,\n  $json?.err,\n  $json?.error_code,\n  rawInput?.error,\n  rawInput?.err,\n  rawInput?.error_code,\n  rawInput?.code,\n  source?.error,\n  source?.err,\n  source?.error_code,\n  source?.code,\n].map((value) => Number(value)).filter((value) => Number.isFinite(value));\nconst apiErrorCode = errorCandidates.length ? errorCandidates[0] : null;\n\nconst baseLookupCandidates = parseJson(base.lookup_candidates);\nconst lookupCandidates = buildLookupCandidates(\n  Array.isArray(baseLookupCandidates) ? baseLookupCandidates : [],\n  String(base.lookup_value || '').trim(),\n  extractLookup(base.command_text || '')\n);\nconst lookupValue = lookupCandidates[0] || String(base.lookup_value || '').trim();\n\nif (typeof $json?.error === 'string' && String($json.error).trim()) {\n  return [{\n    json: {\n      ...base,\n      result: 'list_failed',\n      desired_role: desiredRole,\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      error_message: String($json.error).trim(),\n      candidates: [],\n    },\n  }];\n}\n\nconst candidateArrays = [\n  source,\n  source?.items,\n  source?.members,\n  source?.users,\n  source?.invites,\n  source?.pending_members,\n  source?.pending_invites,\n  source?.pendingInvites,\n  rawInput?.items,\n  rawInput?.members,\n  rawInput?.users,\n  rawInput?.invites,\n  rawInput?.pending_members,\n  rawInput?.pending_invites,\n  rawInput?.pendingInvites,\n];\nlet invites = [];\nfor (const item of candidateArrays) {\n  const parsed = parseJson(item);\n  if (Array.isArray(parsed)) {\n    invites = parsed;\n    break;\n  }\n}\n\nconst normalizedInvites = invites.map((item) => {\n  const invite = parseJson(item) || {};\n  const nestedObjects = [\n    invite,\n    invite.user,\n    invite.member,\n    invite.invitee,\n    invite.invited_user,\n    invite.profile,\n  ].filter((value) => value && typeof value === 'object');\n\n  const pickNestedText = (keys) => {\n    for (const obj of nestedObjects) {\n      const text = pickText(obj, keys);\n      if (text) return text;\n    }\n    return '';\n  };\n\n  const userId = pickNestedText(['user_id', 'uid', 'id', 'invitee_id', 'member_id', 'userId', 'inviteeId', 'memberId']);\n  const displayName = pickNestedText(['display_name', 'name', 'full_name', 'user_name', 'displayName', 'fullName']);\n\n  return {\n    user_id: userId,\n    display_name: displayName,\n    name_norm: normalizeText(displayName),\n    name_compressed: compressText(displayName),\n    raw: invite,\n  };\n}).filter((item) => item.user_id || item.display_name);\n\nconst actionableInvites = normalizedInvites.filter((item) => item.user_id);\n\nif ((apiErrorCode !== null && apiErrorCode !== 0) && !normalizedInvites.length) {\n  return [{\n    json: {\n      ...base,\n      result: 'list_failed',\n      desired_role: desiredRole,\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      error_message: message || ('Zalo API error ' + apiErrorCode),\n      candidates: [],\n    },\n  }];\n}\n\nif (!normalizedInvites.length) {\n  return [{\n    json: {\n      ...base,\n      result: 'no_pending',\n      desired_role: desiredRole,\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      candidates: [],\n    },\n  }];\n}\n\nif (!actionableInvites.length) {\n  return [{\n    json: {\n      ...base,\n      result: 'list_failed',\n      desired_role: desiredRole,\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      error_message: 'Không thấy user_id hợp lệ trong danh sách chờ duyệt.',\n      candidates: normalizedInvites.slice(0, 5),\n    },\n  }];\n}\n\nif (!lookupCandidates.length) {\n  if (actionableInvites.length === 1) {\n    const chosen = actionableInvites[0];\n    return [{\n      json: {\n        ...base,\n        result: 'ready_to_accept',\n        desired_role: desiredRole,\n        lookup_value: '',\n        lookup_candidates: [],\n        chosen_user_id: chosen.user_id,\n        chosen_display_name: chosen.display_name,\n        chosen_raw: chosen.raw,\n        candidates: normalizedInvites.slice(0, 5),\n      },\n    }];\n  }\n\n  return [{\n    json: {\n      ...base,\n      result: 'ambiguous',\n      desired_role: desiredRole,\n      lookup_value: '',\n      lookup_candidates: [],\n      candidates: actionableInvites.slice(0, 5),\n    },\n  }];\n}\n\nconst scoredMatches = actionableInvites.map((item) => {\n  let bestScore = 0;\n  let matchedLookup = '';\n\n  for (const candidate of lookupCandidates) {\n    const candidateRaw = String(candidate || '').trim();\n    const candidateNorm = normalizeText(candidateRaw);\n    const candidateCompressed = compressText(candidateRaw);\n    let score = 0;\n\n    if (!candidateNorm || !candidateCompressed) {\n      continue;\n    }\n\n    if (item.user_id === candidateRaw) {\n      score = 100;\n    } else if (item.name_norm && item.name_norm === candidateNorm) {\n      score = 95;\n    } else if (item.name_compressed && item.name_compressed === candidateCompressed) {\n      score = 90;\n    } else if (item.name_norm && item.name_norm.startsWith(candidateNorm)) {\n      score = 80;\n    } else if (item.name_compressed && item.name_compressed.startsWith(candidateCompressed)) {\n      score = 75;\n    } else if (item.name_norm && item.name_norm.includes(candidateNorm)) {\n      score = 60;\n    } else if (item.name_compressed && item.name_compressed.includes(candidateCompressed)) {\n      score = 55;\n    }\n\n    if (score > bestScore) {\n      bestScore = score;\n      matchedLookup = candidateRaw;\n    }\n  }\n\n  return {\n    ...item,\n    best_score: bestScore,\n    matched_lookup: matchedLookup,\n  };\n}).filter((item) => item.best_score > 0).sort((left, right) => {\n  if (right.best_score !== left.best_score) {\n    return right.best_score - left.best_score;\n  }\n  return String(left.display_name || left.user_id || '').localeCompare(String(right.display_name || right.user_id || ''));\n});\n\nif (!scoredMatches.length) {\n  return [{\n    json: {\n      ...base,\n      result: 'no_pending',\n      desired_role: desiredRole,\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      candidates: normalizedInvites.slice(0, 5),\n    },\n  }];\n}\n\nconst topScore = scoredMatches[0].best_score;\nconst topMatches = scoredMatches.filter((item) => item.best_score === topScore);\n\nif (topMatches.length > 1) {\n  return [{\n    json: {\n      ...base,\n      result: 'ambiguous',\n      desired_role: desiredRole,\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      candidates: topMatches.slice(0, 5),\n    },\n  }];\n}\n\nconst chosen = topMatches[0];\nreturn [{\n  json: {\n    ...base,\n    result: 'ready_to_accept',\n    desired_role: desiredRole,\n    lookup_value: chosen.matched_lookup || lookupValue,\n    lookup_candidates: lookupCandidates,\n    chosen_user_id: chosen.user_id,\n    chosen_display_name: chosen.display_name,\n    chosen_raw: chosen.raw,\n    candidates: normalizedInvites.slice(0, 5),\n  },\n}];"
+      },
+      "id": "027e4e1d-7f37-48fb-ac77-8014e6f090c7",
+      "name": "Code Resolve Pending Invite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        69424,
+        27472
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.result || '')  }}",
+              "rightValue": "ready_to_accept",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              },
+              "id": "6469e18f-5b05-4586-a625-9f4e5fdbb7a6"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "027fee78-4c35-4f55-af32-4e6e52662a1c",
+      "name": "If Has Pending Invite Candidate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        69648,
+        27472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openapi.zalo.me/v3.0/oa/group/acceptpendinginvite",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { group_id: $json.group_id, member_user_ids: [$json.chosen_user_id] } }}",
+        "options": {}
+      },
+      "id": "0b5e5c8c-388b-4a4b-9e46-5c952274cde7",
+      "name": "HTTP Accept Zalo Pending Invite",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        69872,
+        27408
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Code Resolve Pending Invite').first().json;\nconst parseJson = (value) => {\n  if (typeof value !== 'string') return value;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return value;\n  }\n};\nconst rawInput = parseJson($json?.data ?? $json ?? {});\nconst rawErrorText = typeof $json?.error === 'string' ? String($json.error).trim() : '';\nconst errorCandidates = [\n  $json?.error,\n  $json?.err,\n  $json?.error_code,\n  rawInput?.error,\n  rawInput?.err,\n  rawInput?.error_code,\n  rawInput?.code,\n].map((value) => Number(value)).filter((value) => Number.isFinite(value));\nconst apiErrorCode = errorCandidates.length ? errorCandidates[0] : null;\nconst message = String($json?.message || rawInput?.message || rawInput?.error || rawErrorText || '').trim();\nconst success = !rawErrorText && (apiErrorCode === 0 || (apiErrorCode === null && !/fail|error|invalid|forbidden|expired|permission/i.test(message)));\nconst errorMessage = success\n  ? ''\n  : (message || ('Không thể duyệt trên Zalo' + (apiErrorCode !== null ? ' (' + apiErrorCode + ')' : '') + '.'));\n\nreturn [{\n  json: {\n    ...base,\n    result: success ? 'approved' : 'accept_failed',\n    error_message: errorMessage,\n    accept_api_error_code: apiErrorCode,\n    accept_api_message: message,\n    accept_api_raw: JSON.stringify($json ?? {}),\n    approved_user_id: base.chosen_user_id || '',\n    approved_display_name: base.chosen_display_name || '',\n    member: {\n      user_id: base.chosen_user_id || '',\n      display_name: base.chosen_display_name || '',\n      app_role: base.desired_role || 'sales',\n    },\n    candidates: [],\n  },\n}];"
+      },
+      "id": "2c7b33a1-6f03-49c0-8391-7d8200d51e3f",
+      "name": "Code Normalize Accept Pending Invite",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70096,
+        27408
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Approve Member Route').first().json;\nconst row = $input.first()?.json || {};\nlet member = row.member;\nlet candidates = row.candidates;\nif (typeof member === 'string') {\n  try {\n    member = JSON.parse(member);\n  } catch {\n    member = null;\n  }\n}\nif (typeof candidates === 'string') {\n  try {\n    candidates = JSON.parse(candidates);\n  } catch {\n    candidates = [];\n  }\n}\ncandidates = Array.isArray(candidates) ? candidates : [];\n\nconst desiredRole = String(row.desired_role || base.role_value || 'sales').trim() || 'sales';\nconst lookupValue = String(row.lookup_value || base.lookup_value || '').trim();\nconst errorMessage = String(row.error_message || '').trim();\nconst apiErrorCode = String(row.accept_api_error_code || '').trim();\nconst apiMessage = String(row.accept_api_message || '').trim();\nconst candidateLabels = candidates\n  .slice(0, 5)\n  .map((item) => String(item.display_name || '').trim() || String(item.user_id || '').trim())\n  .filter(Boolean);\nlet replyText = '';\nlet auditActionType = 'member_approve_failed';\n\nif (row.result === 'invalid_role') {\n  replyText = 'Quyền chỉ nhận viewer, sales hoặc manager.';\n  auditActionType = 'member_approve_invalid_role';\n} else if (row.result === 'list_failed') {\n  replyText = errorMessage || 'Không lấy được danh sách chờ duyệt.';\n  auditActionType = 'member_approve_list_failed';\n} else if (row.result === 'no_pending') {\n  if (lookupValue && candidateLabels.length) {\n    replyText = 'Không thấy \"' + lookupValue + '\". Chờ duyệt: ' + candidateLabels.join(', ') + '.';\n  } else if (lookupValue) {\n    replyText = 'Không thấy \"' + lookupValue + '\".';\n  } else if (candidateLabels.length) {\n    replyText = 'Chưa rõ người cần duyệt. Chờ duyệt: ' + candidateLabels.join(', ') + '.';\n  } else {\n    replyText = 'Không có ai chờ duyệt.';\n  }\n  auditActionType = 'member_approve_no_pending';\n} else if (row.result === 'ambiguous') {\n  const hint = 'Nhắn: phê duyệt <tên> ' + desiredRole + '.';\n  if (lookupValue && candidateLabels.length) {\n    replyText = 'Có nhiều người khớp \"' + lookupValue + '\": ' + candidateLabels.join(', ') + '. ' + hint;\n  } else if (candidateLabels.length) {\n    replyText = 'Có nhiều người chờ: ' + candidateLabels.join(', ') + '. ' + hint;\n  } else {\n    replyText = 'Có nhiều người chờ. ' + hint;\n  }\n  auditActionType = 'member_approve_ambiguous';\n} else if (row.result === 'accept_failed') {\n  const detail = errorMessage || apiMessage || 'Không thể duyệt trên Zalo.';\n  replyText = apiErrorCode ? (detail + ' (code ' + apiErrorCode + ').') : detail;\n  auditActionType = 'member_approve_accept_failed';\n} else if (row.result === 'approved') {\n  const memberName = String(member?.display_name || row.approved_display_name || row.approved_user_id || lookupValue || '').trim();\n  const memberRole = String(member?.app_role || desiredRole).trim();\n  replyText = 'Đã duyệt ' + memberName + ', quyền ' + memberRole + '.';\n  auditActionType = 'member_approved';\n} else {\n  replyText = errorMessage || 'Không thể duyệt lúc này.';\n  auditActionType = 'member_approve_failed';\n}\n\nreturn [{\n  json: {\n    ...base,\n    ...row,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: '',\n  },\n}];"
+      },
+      "id": "eb4599fa-5407-44aa-a83f-47cfd6fb3c4d",
+      "name": "Code Format Approve Member Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        27472
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "insert into public.lead_handoff_actions (\n  handoff_queue_id,\n  action_type,\n  oa_id,\n  group_id,\n  actor_user_id,\n  actor_display_name,\n  actor_app_role,\n  command_text,\n  source_event_id,\n  payload\n)\nvalues (\n  nullif($1::text, '')::bigint,\n  $2::text,\n  nullif($3::text, ''),\n  nullif($4::text, ''),\n  nullif($5::text, ''),\n  nullif($6::text, ''),\n  nullif($7::text, ''),\n  nullif($8::text, ''),\n  nullif($9::text, ''),\n  $10::jsonb\n)\nreturning *;",
+        "options": {
+          "queryReplacement": "={{ [\n  $json.handoff_queue_id || '',\n  $json.audit_action_type || (($json.route_key || 'command') + '_handled'),\n  $json.oa_id || '',\n  $json.group_id || '',\n  $json.sender_id || '',\n  $json.actor_display_name || $json.sender_display_name || '',\n  $json.actor_app_role || '',\n  $json.command_text || '',\n  $json.source_event_id || '',\n  JSON.stringify({\n    route_key: $json.route_key || '',\n    tool_name: $json.tool_name || $json.command_name || '',\n    command_name: $json.command_name || $json.tool_name || '',\n    handler_name: $json.handler_name || '',\n    required_app_role: $json.required_app_role || '',\n    ticket_id: $json.ticket_id || null,\n    ticket_scope: $json.ticket_scope || '',\n    latest_context_ticket_id: $json.latest_context_ticket_id || null,\n    lookup_value: $json.lookup_value || '',\n    role_value: $json.role_value || '',\n    reason_text: $json.reason_text || '',\n    addorder_action: $json.addorder_action || '',\n    order_draft_id: $json.order_draft_id || null,\n    order_draft_status: $json.order_draft_status || '',\n    app_order_id: $json.app_order_id || '',\n    nhanh_order_id: $json.nhanh_order_id || null,\n    created_order_tracking_url: $json.created_order_tracking_url || '',\n    route_source: $json.route_source || '',\n    reply_text: $json.reply_text || '',\n    product_query: $json.product_query || '',\n    city_query: $json.city_query || '',\n    district_query: $json.district_query || '',\n    max_results: $json.max_results ?? null,\n    inventory_ok: $json.inventory_ok ?? null,\n    inventory_total: $json.inventory_total ?? null,\n    inventory_available_count: $json.inventory_available_count ?? null,\n    tracking_lookup_type: $json.tracking_lookup_type || '',\n    tracking_lookup_value: $json.tracking_lookup_value || '',\n    tracking_order_id: $json.tracking_order_id || null,\n    tracking_url: $json.tracking_url || '',\n    tracking_match_count: $json.tracking_match_count ?? null,\n    accept_api_error_code: $json.accept_api_error_code ?? null,\n    accept_api_message: $json.accept_api_message || '',\n    accept_api_raw: $json.accept_api_raw || '',\n    remove_api_error_code: $json.remove_api_error_code ?? null,\n    remove_api_message: $json.remove_api_message || '',\n    remove_api_raw: $json.remove_api_raw || ''\n  })\n] }}"
+        }
+      },
+      "id": "f6dc4fa3-4fb8-4871-901c-98fdbb30ee58",
+      "name": "PG Insert Zalo Command Audit",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        70544,
+        26928
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!String($json.access_token || '').trim() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "45cd8201-2ad0-4466-abbf-4c45aaa27c70",
+      "name": "If Has Zalo OA Reply Token",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        70544,
+        27168
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openapi.zalo.me/v3.0/oa/group/message",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { recipient: { group_id: $json.group_id }, message: { text: $json.reply_text } } }}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "id": "8f894c6e-da11-43ff-9d16-0af7c682d93f",
+      "name": "HTTP Reply Zalo Group Command",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        70768,
+        27088
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "name": "route_key",
+              "type": "string",
+              "value": "ignore"
+            },
+            {
+              "name": "handler_name",
+              "type": "string",
+              "value": "ignore_event"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "8af9aaa2-43b9-4f90-9497-bbcbcb57ea67",
+      "name": "Ignore Event",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        70992,
+        27168
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ ['remove_member', 'add_admin', 'remove_admin'].includes(String($json.route_key || '')) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0ee6a41a-d07a-403d-9272-b06e96aacdcc",
+      "name": "If Remove Member Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        68528,
+        28128
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Remove Member Route').first().json;\nconst actionKey = String(base.route_key || '').trim();\n\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst compressText = (value) => normalizeText(value).replace(/\\s+/g, '');\nconst parseJson = (value) => {\n  if (typeof value !== 'string') return value;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return value;\n  }\n};\nconst pickText = (obj, keys) => {\n  for (const key of keys) {\n    const value = obj?.[key];\n    const text = String(value ?? '').trim();\n    if (text) return text;\n  }\n  return '';\n};\nconst pickBool = (obj, keys) => {\n  for (const key of keys) {\n    if (obj?.[key] === true) return true;\n  }\n  return false;\n};\nconst extractLookup = (value) => {\n  const originalTokens = String(value || '')\n    .replace(/[,:;.!?()\\[\\]{}\"']/g, ' ')\n    .split(/\\s+/)\n    .filter(Boolean);\n  if (!originalTokens.length) return '';\n\n  const fillerTokens = new Set([\n    'xoa', 'remove', 'kick', 'member', 'thanh', 'vien', 'khoi', 'nhom', 'group', 'dua', 'ra',\n    'duoi', 'giup', 'dum', 'di', 'voi', 'nguoi', 'ten', 'anh', 'chi', 'em', 'oi', 'ho', 'gium',\n    'a', 'ah', 'ha', 'ban', 'nay', 'nhe', 'nha', 'cho', 'out', 'them', 'pho', 'admin', 'quan',\n    'tri', 'bo', 'nhiem', 'lam', 'go', 'ha', 'deputy', 'cap', 'len', 'quyen', 'cua'\n  ]);\n\n  const filteredTokens = originalTokens.filter((token) => {\n    const normalizedToken = normalizeText(token);\n    if (!normalizedToken) return false;\n    if (fillerTokens.has(normalizedToken)) return false;\n    return true;\n  });\n\n  return filteredTokens.join(' ').trim();\n};\nconst buildLookupCandidates = (...values) => {\n  const candidates = [];\n  const seen = new Set();\n\n  const pushCandidate = (value) => {\n    const rawValue = String(value || '').trim();\n    if (!rawValue) return;\n\n    const variants = [extractLookup(rawValue), rawValue];\n    for (const variant of variants) {\n      const candidate = String(variant || '').trim();\n      const normalized = normalizeText(candidate);\n      const compressed = compressText(candidate);\n      if (!normalized || !compressed) continue;\n      if (seen.has(compressed)) continue;\n      seen.add(compressed);\n      candidates.push(candidate);\n    }\n  };\n\n  for (const value of values.flat()) {\n    pushCandidate(value);\n  }\n\n  return candidates;\n};\nconst normalizeGroupRole = (value, flags = {}) => {\n  if (flags.isOwner) return 'owner';\n  if (flags.isAdmin) return 'deputy';\n  const rawValue = normalizeText(value);\n  if (!rawValue) return 'unknown';\n  if (rawValue.includes('owner') || rawValue.includes('truong nhom')) return 'owner';\n  if (rawValue.includes('deputy') || rawValue.includes('pho nhom') || rawValue === 'admin' || rawValue.includes(' admin') || rawValue.includes('quan tri')) return 'deputy';\n  if (rawValue.includes('member') || rawValue.includes('thanh vien')) return 'member';\n  return rawValue;\n};\n\nconst rawInput = parseJson($json?.data ?? $json ?? {});\nconst source = parseJson(rawInput?.data ?? rawInput);\nconst message = String($json?.message || rawInput?.message || $json?.error || rawInput?.error || '').trim();\nconst errorCandidates = [\n  $json?.error,\n  $json?.err,\n  $json?.error_code,\n  rawInput?.error,\n  rawInput?.err,\n  rawInput?.error_code,\n  rawInput?.code,\n  source?.error,\n  source?.err,\n  source?.error_code,\n  source?.code,\n].map((value) => Number(value)).filter((value) => Number.isFinite(value));\nconst apiErrorCode = errorCandidates.length ? errorCandidates[0] : null;\n\nconst baseLookupCandidates = parseJson(base.lookup_candidates);\nconst lookupCandidates = buildLookupCandidates(\n  Array.isArray(baseLookupCandidates) ? baseLookupCandidates : [],\n  String(base.lookup_value || '').trim(),\n  extractLookup(base.command_text || '')\n);\nconst lookupValue = lookupCandidates[0] || String(base.lookup_value || '').trim();\nconst numericLookup = lookupCandidates.find((candidate) => /^\\d+$/.test(String(candidate || '').trim())) || (/^\\d+$/.test(lookupValue) ? lookupValue : '');\n\nif (typeof $json?.error === 'string' && String($json.error).trim()) {\n  if (numericLookup) {\n    return [{\n      json: {\n        ...base,\n        result: 'ready_to_remove_direct',\n        lookup_value: numericLookup,\n        lookup_candidates: lookupCandidates,\n        chosen_user_id: numericLookup,\n        chosen_display_name: '',\n        chosen_group_role: 'unknown',\n        candidates: [],\n        list_api_warning: String($json.error).trim(),\n      },\n    }];\n  }\n\n  return [{\n    json: {\n      ...base,\n      result: 'list_failed',\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      error_message: String($json.error).trim(),\n      candidates: [],\n    },\n  }];\n}\n\nconst candidateArrays = [\n  source,\n  source?.items,\n  source?.members,\n  source?.users,\n  source?.member_list,\n  source?.memberList,\n  source?.group_members,\n  source?.groupMembers,\n  source?.data,\n  rawInput?.items,\n  rawInput?.members,\n  rawInput?.users,\n  rawInput?.member_list,\n  rawInput?.memberList,\n  rawInput?.group_members,\n  rawInput?.groupMembers,\n  rawInput?.data,\n];\nlet members = [];\nfor (const item of candidateArrays) {\n  const parsed = parseJson(item);\n  if (Array.isArray(parsed)) {\n    members = parsed;\n    break;\n  }\n}\n\nconst normalizedMembers = members.map((item) => {\n  const member = parseJson(item) || {};\n  const nestedObjects = [\n    member,\n    member.user,\n    member.member,\n    member.profile,\n    member.account,\n  ].filter((value) => value && typeof value === 'object');\n\n  const pickNestedText = (keys) => {\n    for (const obj of nestedObjects) {\n      const text = pickText(obj, keys);\n      if (text) return text;\n    }\n    return '';\n  };\n\n  const userId = pickNestedText(['user_id', 'uid', 'id', 'member_id', 'userId', 'memberId']);\n  const displayName = pickNestedText(['display_name', 'name', 'full_name', 'user_name', 'displayName', 'fullName']);\n  const groupRole = pickNestedText(['role', 'group_role', 'member_role', 'groupRole']);\n  const isOwner = nestedObjects.some((obj) => pickBool(obj, ['is_owner', 'owner', 'isOwner']));\n  const isAdmin = nestedObjects.some((obj) => pickBool(obj, ['is_admin', 'admin', 'isAdmin']));\n  const normalizedGroupRole = normalizeGroupRole(groupRole, { isOwner, isAdmin });\n\n  return {\n    user_id: userId,\n    display_name: displayName,\n    group_role: groupRole,\n    normalized_group_role: normalizedGroupRole,\n    name_norm: normalizeText(displayName),\n    name_compressed: compressText(displayName),\n    raw: member,\n  };\n}).filter((item) => item.user_id || item.display_name);\n\nconst actionableMembers = normalizedMembers.filter((item) => item.user_id);\n\nif (!lookupCandidates.length) {\n  return [{\n    json: {\n      ...base,\n      result: 'lookup_missing',\n      lookup_value: '',\n      lookup_candidates: [],\n      candidates: actionableMembers.slice(0, 5),\n    },\n  }];\n}\n\nif ((apiErrorCode !== null && apiErrorCode !== 0) && !normalizedMembers.length) {\n  if (numericLookup) {\n    return [{\n      json: {\n        ...base,\n        result: 'ready_to_remove_direct',\n        lookup_value: numericLookup,\n        lookup_candidates: lookupCandidates,\n        chosen_user_id: numericLookup,\n        chosen_display_name: '',\n        chosen_group_role: 'unknown',\n        candidates: [],\n        list_api_warning: message || ('Zalo API error ' + apiErrorCode),\n      },\n    }];\n  }\n\n  return [{\n    json: {\n      ...base,\n      result: 'list_failed',\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      error_message: message || ('Zalo API error ' + apiErrorCode),\n      candidates: [],\n    },\n  }];\n}\n\nif (!actionableMembers.length) {\n  if (numericLookup) {\n    return [{\n      json: {\n        ...base,\n        result: 'ready_to_remove_direct',\n        lookup_value: numericLookup,\n        lookup_candidates: lookupCandidates,\n        chosen_user_id: numericLookup,\n        chosen_display_name: '',\n        chosen_group_role: 'unknown',\n        candidates: normalizedMembers.slice(0, 5),\n      },\n    }];\n  }\n\n  return [{\n    json: {\n      ...base,\n      result: 'list_failed',\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      error_message: 'Không lấy được danh sách thành viên.',\n      candidates: normalizedMembers.slice(0, 5),\n    },\n  }];\n}\n\nconst scoredMatches = actionableMembers.map((item) => {\n  let bestScore = 0;\n  let matchedLookup = '';\n\n  for (const candidate of lookupCandidates) {\n    const candidateRaw = String(candidate || '').trim();\n    const candidateNorm = normalizeText(candidateRaw);\n    const candidateCompressed = compressText(candidateRaw);\n    let score = 0;\n\n    if (!candidateNorm || !candidateCompressed) {\n      continue;\n    }\n\n    if (item.user_id === candidateRaw) {\n      score = 100;\n    } else if (item.name_norm && item.name_norm === candidateNorm) {\n      score = 95;\n    } else if (item.name_compressed && item.name_compressed === candidateCompressed) {\n      score = 90;\n    } else if (item.name_norm && item.name_norm.startsWith(candidateNorm)) {\n      score = 80;\n    } else if (item.name_compressed && item.name_compressed.startsWith(candidateCompressed)) {\n      score = 75;\n    } else if (item.name_norm && item.name_norm.includes(candidateNorm)) {\n      score = 60;\n    } else if (item.name_compressed && item.name_compressed.includes(candidateCompressed)) {\n      score = 55;\n    }\n\n    if (score > bestScore) {\n      bestScore = score;\n      matchedLookup = candidateRaw;\n    }\n  }\n\n  return {\n    ...item,\n    best_score: bestScore,\n    matched_lookup: matchedLookup,\n  };\n}).filter((item) => item.best_score > 0).sort((left, right) => {\n  if (right.best_score !== left.best_score) {\n    return right.best_score - left.best_score;\n  }\n  return String(left.display_name || left.user_id || '').localeCompare(String(right.display_name || right.user_id || ''));\n});\n\nif (!scoredMatches.length) {\n  if (numericLookup) {\n    return [{\n      json: {\n        ...base,\n        result: 'ready_to_remove_direct',\n        lookup_value: numericLookup,\n        lookup_candidates: lookupCandidates,\n        chosen_user_id: numericLookup,\n        chosen_display_name: '',\n        chosen_group_role: 'unknown',\n        candidates: actionableMembers.slice(0, 5),\n      },\n    }];\n  }\n\n  return [{\n    json: {\n      ...base,\n      result: 'no_member_found',\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      candidates: actionableMembers.slice(0, 5),\n    },\n  }];\n}\n\nconst topScore = scoredMatches[0].best_score;\nconst topMatches = scoredMatches.filter((item) => item.best_score === topScore);\n\nif (topMatches.length > 1) {\n  return [{\n    json: {\n      ...base,\n      result: 'ambiguous',\n      lookup_value: lookupValue,\n      lookup_candidates: lookupCandidates,\n      candidates: topMatches.slice(0, 5),\n    },\n  }];\n}\n\nconst chosen = topMatches[0];\nconst chosenGroupRole = String(chosen.normalized_group_role || 'unknown').trim();\nif (actionKey === 'add_admin' && ['owner', 'deputy'].includes(chosenGroupRole)) {\n  return [{\n    json: {\n      ...base,\n      result: 'already_admin',\n      lookup_value: chosen.matched_lookup || lookupValue,\n      lookup_candidates: lookupCandidates,\n      chosen_user_id: chosen.user_id,\n      chosen_display_name: chosen.display_name,\n      chosen_group_role: chosenGroupRole,\n      chosen_raw: chosen.raw,\n      candidates: actionableMembers.slice(0, 5),\n    },\n  }];\n}\n\nif (actionKey === 'remove_admin' && chosenGroupRole === 'owner') {\n  return [{\n    json: {\n      ...base,\n      result: 'owner_locked',\n      lookup_value: chosen.matched_lookup || lookupValue,\n      lookup_candidates: lookupCandidates,\n      chosen_user_id: chosen.user_id,\n      chosen_display_name: chosen.display_name,\n      chosen_group_role: chosenGroupRole,\n      chosen_raw: chosen.raw,\n      candidates: actionableMembers.slice(0, 5),\n    },\n  }];\n}\n\nif (actionKey === 'remove_admin' && chosenGroupRole !== 'deputy') {\n  return [{\n    json: {\n      ...base,\n      result: 'not_admin',\n      lookup_value: chosen.matched_lookup || lookupValue,\n      lookup_candidates: lookupCandidates,\n      chosen_user_id: chosen.user_id,\n      chosen_display_name: chosen.display_name,\n      chosen_group_role: chosenGroupRole,\n      chosen_raw: chosen.raw,\n      candidates: actionableMembers.slice(0, 5),\n    },\n  }];\n}\n\nif (actionKey === 'remove_member' && chosenGroupRole === 'owner') {\n  return [{\n    json: {\n      ...base,\n      result: 'owner_locked',\n      lookup_value: chosen.matched_lookup || lookupValue,\n      lookup_candidates: lookupCandidates,\n      chosen_user_id: chosen.user_id,\n      chosen_display_name: chosen.display_name,\n      chosen_group_role: chosenGroupRole,\n      chosen_raw: chosen.raw,\n      candidates: actionableMembers.slice(0, 5),\n    },\n  }];\n}\n\nreturn [{\n  json: {\n    ...base,\n    result: 'ready_to_remove',\n    lookup_value: chosen.matched_lookup || lookupValue,\n    lookup_candidates: lookupCandidates,\n    chosen_user_id: chosen.user_id,\n    chosen_display_name: chosen.display_name,\n    chosen_group_role: chosenGroupRole,\n    chosen_raw: chosen.raw,\n    candidates: actionableMembers.slice(0, 5),\n  },\n}];"
+      },
+      "id": "d7954a80-5fee-4d62-840d-71180dd43c3b",
+      "name": "Code Resolve Remove Member",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        68976,
+        27952
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ ['ready_to_remove', 'ready_to_remove_direct'].includes(String($json.result || '')) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "944ccf63-0a65-4493-b8df-e4735722335d"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "525e910b-1826-46d0-b7f6-df6825e0cf0c",
+      "name": "If Has Remove Member Candidate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        69200,
+        27952
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openapi.zalo.me/v3.0/oa/group/removemembers",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { group_id: $json.group_id, member_user_ids: [$json.chosen_user_id] } }}",
+        "options": {}
+      },
+      "id": "6a5ab721-6fb5-4dbf-933a-5512bd72aaf2",
+      "name": "HTTP Remove Zalo Group Member",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        69872,
+        27888
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Code Resolve Remove Member').first().json;\nconst routeKey = String(base.route_key || '').trim();\nconst parseJson = (value) => {\n  if (typeof value !== 'string') return value;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return value;\n  }\n};\nconst rawInput = parseJson($json?.data ?? $json ?? {});\nconst rawErrorText = typeof $json?.error === 'string' ? String($json.error).trim() : '';\nconst errorCandidates = [\n  $json?.error,\n  $json?.err,\n  $json?.error_code,\n  rawInput?.error,\n  rawInput?.err,\n  rawInput?.error_code,\n  rawInput?.code,\n].map((value) => Number(value)).filter((value) => Number.isFinite(value));\nconst apiErrorCode = errorCandidates.length ? errorCandidates[0] : null;\nconst message = String($json?.message || rawInput?.message || rawInput?.error || rawErrorText || '').trim();\nconst success = !rawErrorText && (apiErrorCode === 0 || (apiErrorCode === null && !/fail|error|invalid|forbidden|expired|permission/i.test(message)));\nconst failDefaults = {\n  add_admin: 'Không thêm phó nhóm được.',\n  remove_admin: 'Không xoá phó nhóm được.',\n  remove_member: 'Không xoá thành viên được.',\n};\nconst errorMessage = success\n  ? ''\n  : (message || failDefaults[routeKey] || 'Không xử lý được.');\n\nreturn [{\n  json: {\n    ...base,\n    result: success ? 'removed' : 'remove_failed',\n    error_message: errorMessage,\n    action_api_error_code: apiErrorCode,\n    action_api_message: message,\n    action_api_raw: JSON.stringify($json ?? {}),\n    removed_user_id: base.chosen_user_id || '',\n    removed_display_name: base.chosen_display_name || '',\n    member: {\n      user_id: base.chosen_user_id || '',\n      display_name: base.chosen_display_name || '',\n      group_role: base.chosen_group_role || '',\n    },\n    candidates: [],\n  },\n}];"
+      },
+      "id": "c04741b0-6dba-4db1-a205-8bafdaf22cfb",
+      "name": "Code Normalize Remove Member",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70096,
+        27888
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Remove Member Route').first().json;\nconst row = $input.first()?.json || {};\nlet member = row.member;\nlet candidates = row.candidates;\nif (typeof member === 'string') {\n  try {\n    member = JSON.parse(member);\n  } catch {\n    member = null;\n  }\n}\nif (typeof candidates === 'string') {\n  try {\n    candidates = JSON.parse(candidates);\n  } catch {\n    candidates = [];\n  }\n}\ncandidates = Array.isArray(candidates) ? candidates : [];\n\nconst normalizeText = (value) => String(value || '')\n  .normalize('NFD')\n  .replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/đ/g, 'd')\n  .replace(/Đ/g, 'd')\n  .toLowerCase()\n  .replace(/[^a-z0-9\\s]/g, ' ')\n  .replace(/\\s+/g, ' ')\n  .trim();\n\nconst routeKey = String(row.route_key || base.route_key || '').trim();\nconst lookupValue = String(row.lookup_value || base.lookup_value || '').trim();\nconst errorMessage = String(row.error_message || '').trim();\nconst apiErrorCode = String(row.action_api_error_code || '').trim();\nconst candidateLabels = candidates\n  .slice(0, 3)\n  .map((item) => {\n    const name = String(item.display_name || '').trim();\n    const userId = String(item.user_id || '').trim();\n    return name && userId ? (name + ' | ' + userId) : (name || userId);\n  })\n  .filter(Boolean);\nconst chosenGroupRole = normalizeText(member?.group_role || row.chosen_group_role || '');\nconst memberName = String(\n  member?.display_name ||\n  row.removed_display_name ||\n  row.chosen_display_name ||\n  row.removed_user_id ||\n  row.chosen_user_id ||\n  lookupValue ||\n  'người này'\n).trim();\n\nconst actionMetaMap = {\n  remove_member: {\n    hint: 'Dùng: /remove-member <user_id>.',\n    listFailed: 'Không lấy được danh sách thành viên.',\n    failed: 'Không xoá thành viên được.',\n    success: (name) => 'Đã xoá ' + name + '.',\n  },\n  add_admin: {\n    hint: 'Dùng: /add-admin <user_id>.',\n    listFailed: 'Không lấy được danh sách thành viên.',\n    failed: 'Không thêm phó nhóm được.',\n    success: (name) => 'Đã thêm ' + name + ' làm phó nhóm.',\n  },\n  remove_admin: {\n    hint: 'Dùng: /remove-admin <user_id>.',\n    listFailed: 'Không lấy được danh sách thành viên.',\n    failed: 'Không xoá phó nhóm được.',\n    success: (name) => 'Đã xoá quyền phó nhóm của ' + name + '.',\n  },\n};\nconst actionMeta = actionMetaMap[routeKey] || actionMetaMap.remove_member;\n\nlet replyText = '';\nlet auditActionType = routeKey === 'add_admin'\n  ? 'group_admin_add_failed'\n  : (routeKey === 'remove_admin' ? 'group_admin_remove_failed' : 'member_remove_failed');\n\nif (row.result === 'lookup_missing') {\n  if (candidateLabels.length) {\n    replyText = 'Cần rõ người: ' + candidateLabels.join(', ') + '. ' + actionMeta.hint;\n  } else {\n    replyText = 'Cần tên hoặc user_id. ' + actionMeta.hint;\n  }\n  auditActionType = routeKey === 'add_admin'\n    ? 'group_admin_add_lookup_missing'\n    : (routeKey === 'remove_admin' ? 'group_admin_remove_lookup_missing' : 'member_remove_lookup_missing');\n} else if (row.result === 'list_failed') {\n  replyText = errorMessage.startsWith('Không') ? errorMessage : actionMeta.listFailed;\n  auditActionType = routeKey === 'add_admin'\n    ? 'group_admin_add_list_failed'\n    : (routeKey === 'remove_admin' ? 'group_admin_remove_list_failed' : 'member_remove_list_failed');\n} else if (row.result === 'no_member_found') {\n  replyText = lookupValue ? ('Không thấy \"' + lookupValue + '\".') : 'Không thấy người cần xử lý.';\n  auditActionType = routeKey === 'add_admin'\n    ? 'group_admin_add_not_found'\n    : (routeKey === 'remove_admin' ? 'group_admin_remove_not_found' : 'member_remove_not_found');\n} else if (row.result === 'ambiguous') {\n  if (candidateLabels.length) {\n    replyText = 'Nhiều người khớp: ' + candidateLabels.join(', ') + '. ' + actionMeta.hint;\n  } else {\n    replyText = 'Nhiều người khớp. ' + actionMeta.hint;\n  }\n  auditActionType = routeKey === 'add_admin'\n    ? 'group_admin_add_ambiguous'\n    : (routeKey === 'remove_admin' ? 'group_admin_remove_ambiguous' : 'member_remove_ambiguous');\n} else if (row.result === 'already_admin') {\n  replyText = chosenGroupRole === 'owner'\n    ? (memberName + ' đang là trưởng nhóm.')\n    : (memberName + ' đã là phó nhóm.');\n  auditActionType = 'group_admin_add_already_exists';\n} else if (row.result === 'not_admin') {\n  replyText = memberName + ' chưa là phó nhóm.';\n  auditActionType = 'group_admin_remove_not_admin';\n} else if (row.result === 'owner_locked') {\n  replyText = routeKey === 'remove_member'\n    ? 'Không thể xoá trưởng nhóm.'\n    : 'Không thể xoá quyền của trưởng nhóm.';\n  auditActionType = routeKey === 'remove_member' ? 'member_remove_owner_locked' : 'group_admin_remove_owner_locked';\n} else if (row.result === 'remove_failed') {\n  replyText = apiErrorCode\n    ? (actionMeta.failed + ' (code ' + apiErrorCode + ').')\n    : (errorMessage || actionMeta.failed);\n  auditActionType = routeKey === 'add_admin'\n    ? 'group_admin_add_api_failed'\n    : (routeKey === 'remove_admin' ? 'group_admin_remove_api_failed' : 'member_remove_api_failed');\n} else if (row.result === 'removed') {\n  replyText = actionMeta.success(memberName);\n  auditActionType = routeKey === 'add_admin'\n    ? 'group_admin_added'\n    : (routeKey === 'remove_admin' ? 'group_admin_removed' : 'member_removed');\n} else {\n  replyText = actionMeta.failed;\n}\n\nreturn [{\n  json: {\n    ...base,\n    ...row,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: '',\n  },\n}];"
+      },
+      "id": "6d4d411c-8a2c-4c5d-a465-a9e897420e71",
+      "name": "Code Format Remove Member Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        28048
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.group_members_list_url || 'https://openapi.zalo.me/v3.0/oa/group/listmember' }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "group_id",
+              "value": "={{ $json.group_id }}"
+            },
+            {
+              "name": "offset",
+              "value": "0"
+            },
+            {
+              "name": "count",
+              "value": "50"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1c228c21-4d2d-4b8d-9f36-0d04701dbac8",
+      "name": "HTTP List Zalo Group Members Remove",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        68752,
+        27952
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'list_tickets' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5cba5c9c-aa28-4da8-8117-7f37d1981b38",
+      "name": "If List Tickets Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        67632,
+        27888
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with base as (\n  select\n    id,\n    status,\n    fullname,\n    phone,\n    products_interested,\n    claimed_by_display_name,\n    created_at\n  from public.lead_handoff_queue\n  where (nullif($1::text, '') is null or group_id = nullif($1::text, ''))\n    and (\n      coalesce(nullif($2::text, ''), 'open') = 'all'\n      or coalesce(status, '') not in ('done', 'closed', 'cancelled')\n    )\n  order by\n    case when coalesce(status, '') in ('pending', 'sent', 'notified', 'claimed') then 0 else 1 end,\n    created_at desc\n), paged as (\n  select * from base limit greatest(least($3::int, 10), 1)\n)\nselect\n  coalesce(nullif($2::text, ''), 'open') as ticket_scope,\n  (select count(*)::int from base) as total,\n  coalesce((select json_agg(row_to_json(paged) order by paged.created_at desc) from paged), '[]'::json) as items;",
+        "options": {
+          "queryReplacement": "={{ [ $json.group_id || '', $json.ticket_scope || 'open', 10 ] }}"
+        }
+      },
+      "id": "5c9b9417-069e-4a5f-821a-55e76819bd70",
+      "name": "PG Load Ticket List",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        70096,
+        28720
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If List Tickets Route').first().json;\nconst row = $input.first()?.json || {};\n\nconst parseJson = (value) => {\n  if (typeof value !== 'string') return value;\n  try {\n    return JSON.parse(value);\n  } catch {\n    return value;\n  }\n};\n\nconst rawError = String(row.error || '').trim();\nif (rawError) {\n  return [{\n    json: {\n      ...base,\n      reply_text: 'Không tải được danh sách ticket.',\n      audit_action_type: 'ticket_list_failed',\n      handoff_queue_id: '',\n    },\n  }];\n}\n\nconst items = Array.isArray(parseJson(row.items)) ? parseJson(row.items) : [];\nconst total = Number(row.total || 0);\nconst ticketScope = String(row.ticket_scope || base.ticket_scope || 'open').trim() || 'open';\nconst statusMap = {\n  pending: 'mới',\n  sent: 'đã gửi',\n  notified: 'đã báo',\n  claimed: 'đã nhận',\n  done: 'xong',\n  closed: 'đã đóng',\n  cancelled: 'đã reject',\n};\n\nlet replyText = '';\nif (!total) {\n  replyText = ticketScope === 'all' ? 'Chưa có ticket.' : 'Không có ticket mở.';\n} else {\n  const header = ticketScope === 'all' ? ('Tất cả ticket: ' + total) : ('Ticket mở: ' + total);\n  const lines = [header];\n  for (const item of items) {\n    const ticketId = String(item.id || '').trim();\n    const status = statusMap[String(item.status || '').trim()] || String(item.status || '').trim() || 'chưa rõ';\n    const customer = String(item.fullname || '').trim() || String(item.phone || '').trim() || 'không rõ';\n    lines.push('T-' + ticketId + ' | ' + status + ' | ' + customer);\n  }\n  if (total > items.length) {\n    lines.push(ticketScope === 'all'\n      ? ('Còn ' + (total - items.length) + ' ticket nữa.')\n      : ('Còn ' + (total - items.length) + ' ticket mở nữa.'));\n  }\n  replyText = lines.join('\\n');\n}\n\nreturn [{\n  json: {\n    ...base,\n    ticket_scope: ticketScope,\n    total_ticket_items: total,\n    ticket_items: items,\n    reply_text: replyText,\n    audit_action_type: 'tickets_listed',\n    handoff_queue_id: '',\n  },\n}];"
+      },
+      "id": "70998b55-a0a9-4c47-aed0-12c4204781a8",
+      "name": "Code Format Ticket List Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        28720
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'reject_ticket' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c367523f-021d-47bf-976d-82078aeb357b",
+      "name": "If Reject Ticket Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        69872,
+        28464
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with target as (\n  select *\n  from public.lead_handoff_queue\n  where id = $1::bigint\n    and (nullif($2::text, '') is null or group_id = nullif($2::text, ''))\n  limit 1\n), updated as (\n  update public.lead_handoff_queue q\n  set status = 'cancelled',\n      closed_by_user_id = nullif($3::text, ''),\n      closed_by_display_name = nullif($4::text, ''),\n      closed_reason = nullif($5::text, ''),\n      closed_at = now()\n  from target t\n  where q.id = t.id\n    and q.status not in ('done', 'closed', 'cancelled')\n  returning q.*\n)\nselect\n  exists(select 1 from target) as found,\n  exists(select 1 from updated) as updated,\n  coalesce((select row_to_json(updated) from updated), (select row_to_json(target) from target)) as ticket,\n  nullif($5::text, '') as reason_text;",
+        "options": {
+          "queryReplacement": "={{ [ Number($json.ticket_id || 0), $json.group_id || '', $json.sender_id || '', $json.actor_display_name || $json.sender_display_name || '', $json.reason_text || '' ] }}"
+        }
+      },
+      "id": "1e9ab031-a6e9-4fb2-9dd1-fd23cc548da2",
+      "name": "PG Reject Ticket",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        70096,
+        28528
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Reject Ticket Route').first().json;\nconst row = $input.first()?.json || {};\nlet ticket = row.ticket;\nif (typeof ticket === 'string') {\n  try {\n    ticket = JSON.parse(ticket);\n  } catch {\n    ticket = null;\n  }\n}\n\nconst rawError = String(row.error || '').trim();\nconst ticketId = Number(base.ticket_id || row.ticket_id || 0) || 0;\nconst reasonText = String(row.reason_text || base.reason_text || '').trim();\nlet replyText = '';\nlet auditActionType = 'ticket_reject_failed';\nlet handoffQueueId = '';\n\nif (rawError) {\n  replyText = 'Không reject được ticket lúc này.';\n} else if (!row.found || !ticket) {\n  replyText = 'Không thấy ticket T-' + ticketId + '.';\n  auditActionType = 'ticket_reject_not_found';\n} else if (row.updated) {\n  handoffQueueId = ticket.id || ticketId;\n  replyText = reasonText\n    ? ('Đã reject T-' + (ticket.id || ticketId) + '.\\nLý do: ' + reasonText)\n    : ('Đã reject T-' + (ticket.id || ticketId) + '.');\n  auditActionType = 'ticket_rejected';\n} else {\n  handoffQueueId = ticket.id || ticketId;\n  const status = String(ticket.status || '').trim();\n  if (status === 'cancelled') {\n    replyText = 'T-' + (ticket.id || ticketId) + ' đã reject rồi.';\n    auditActionType = 'ticket_reject_already_done';\n  } else if (status === 'closed' || status === 'done') {\n    replyText = 'T-' + (ticket.id || ticketId) + ' đã đóng, không reject được.';\n    auditActionType = 'ticket_reject_closed';\n  } else {\n    replyText = 'Không reject được T-' + (ticket.id || ticketId) + '.';\n  }\n}\n\nreturn [{\n  json: {\n    ...base,\n    ...row,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: handoffQueueId,\n  },\n}];"
+      },
+      "id": "f1f7ecfb-15c8-4b48-9a22-e24f83682bf4",
+      "name": "Code Format Reject Ticket Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        28528
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with recent as (\n  select\n    coalesce(actor_display_name, '') as actor_display_name,\n    coalesce(action_type, '') as action_type,\n    coalesce(command_text, '') as command_text,\n    coalesce(payload->>'tool_name', payload->>'command_name', '') as tool_name,\n    coalesce(payload->>'reply_text', '') as reply_text,\n    created_at\n  from public.lead_handoff_actions\n  where group_id = nullif($1::text, '')\n  order by created_at desc\n  limit 6\n),\nrecent_ticket_actions as (\n  select\n    coalesce(\n      handoff_queue_id,\n      case\n        when coalesce(payload->>'ticket_id', '') ~ '^[0-9]+$' then (payload->>'ticket_id')::bigint\n        else null\n      end\n    ) as ticket_id,\n    coalesce(command_text, '') as command_text,\n    coalesce(payload->>'tool_name', payload->>'command_name', '') as tool_name,\n    coalesce(payload->>'route_key', '') as route_key,\n    created_at\n  from public.lead_handoff_actions\n  where group_id = nullif($1::text, '')\n    and coalesce(\n      handoff_queue_id,\n      case\n        when coalesce(payload->>'ticket_id', '') ~ '^[0-9]+$' then (payload->>'ticket_id')::bigint\n        else null\n      end\n    ) is not null\n  order by created_at desc\n  limit 5\n),\nopen_tickets as (\n  select\n    id,\n    status,\n    fullname,\n    phone,\n    products_interested,\n    need_summary,\n    claimed_by_display_name,\n    created_at\n  from public.lead_handoff_queue\n  where (nullif($1::text, '') is null or group_id = nullif($1::text, ''))\n    and coalesce(status, '') not in ('done', 'closed', 'cancelled')\n  order by created_at desc\n  limit 5\n)\nselect\n  coalesce((select json_agg(row_to_json(recent) order by recent.created_at desc) from recent), '[]'::json) as recent_actions,\n  coalesce((select json_agg(row_to_json(recent_ticket_actions) order by recent_ticket_actions.created_at desc) from recent_ticket_actions), '[]'::json) as recent_ticket_actions,\n  coalesce((select json_agg(row_to_json(open_tickets) order by open_tickets.created_at desc) from open_tickets), '[]'::json) as open_tickets,\n  coalesce((\n    select count(*)::int\n    from public.lead_handoff_queue q\n    where (nullif($1::text, '') is null or q.group_id = nullif($1::text, ''))\n      and coalesce(q.status, '') not in ('done', 'closed', 'cancelled')\n  ), 0) as open_ticket_total,\n  (select ticket_id from recent_ticket_actions limit 1) as latest_ticket_id,\n  (select id from open_tickets limit 1) as latest_open_ticket_id;",
+        "options": {
+          "queryReplacement": "={{ [ $json.group_id || '' ] }}"
+        }
+      },
+      "id": "c7399896-bda8-4f44-be45-7bc0614004d6",
+      "name": "PG Load Recent Zalo Action Context",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        64592,
+        25984
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "ba42ee6f-1de7-4d75-b594-6f2ea3116943",
+      "name": "Merge AI Router Context",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        64816,
+        26128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'add_admin' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9b7a3428-0626-4c02-bde8-14b5725afb94",
+      "name": "If Add Admin Action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        69424,
+        27888
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openapi.zalo.me/v3.0/oa/group/addadmins",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { group_id: $json.group_id, member_user_ids: [$json.chosen_user_id] } }}",
+        "options": {}
+      },
+      "id": "694e9e5f-6763-4a37-9982-3ed9448f902b",
+      "name": "HTTP Add Zalo Group Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        69872,
+        27696
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'remove_admin' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a19826e5-cc96-4b05-ad2b-08ab1da91691",
+      "name": "If Remove Admin Action",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        69648,
+        27984
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://openapi.zalo.me/v3.0/oa/group/removeadmins",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $json.access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { group_id: $json.group_id, member_user_ids: [$json.chosen_user_id] } }}",
+        "options": {}
+      },
+      "id": "cadc4c70-5152-4191-8dfa-a464ac2df072",
+      "name": "HTTP Remove Zalo Group Admin",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        69872,
+        28080
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'tracking_url' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "869c37af-6640-473c-9b4c-3a079178da9d",
+      "name": "If Tracking URL Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        67184,
+        27504
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "with tok as (\n  select\n    coalesce(app_id, 0)::bigint as app_id,\n    coalesce(business_id, 0)::bigint as business_id,\n    coalesce(access_token, '') as nhanh_access_token\n  from public.nhanh_api_tokens\n  where token_key = 'nhanh_main'\n  order by updated_at desc nulls last\n  limit 1\n),\nlead as (\n  select\n    id,\n    phone,\n    fullname\n  from public.lead_handoff_queue\n  where nullif($1::text, '') is not null\n    and id = nullif($1::text, '')::bigint\n    and (\n      nullif($3::text, '') is null\n      or group_id = nullif($3::text, '')\n      or group_id is null\n    )\n  order by created_at desc\n  limit 1\n),\norder_match as (\n  select\n    ticket_code,\n    phone,\n    customer_name\n  from public.order_tickets\n  where nullif($2::text, '') is not null\n    and (\n      ticket_code = nullif($2::text, '')\n      or phone = nullif($2::text, '')\n      or source_message_id = nullif($2::text, '')\n    )\n  order by created_at desc nulls last\n  limit 1\n)\nselect\n  (select app_id from tok) as app_id,\n  (select business_id from tok) as business_id,\n  (select nhanh_access_token from tok) as nhanh_access_token,\n  (select id from lead) as lead_ticket_id,\n  coalesce((select phone from lead), '') as lead_phone,\n  coalesce((select fullname from lead), '') as lead_fullname,\n  coalesce((select ticket_code from order_match), '') as order_ticket_code,\n  coalesce((select phone from order_match), '') as order_ticket_phone,\n  coalesce((select customer_name from order_match), '') as order_ticket_customer_name;",
+        "options": {
+          "queryReplacement": "={{ [ $json.ticket_id || '', $json.lookup_value || '', $json.group_id || '' ] }}"
+        }
+      },
+      "id": "ec9f86d7-aa5f-465a-aa35-48efc4ab8e3e",
+      "name": "PG Load Tracking Lookup Context",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        69424,
+        26304
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Tracking URL Route').first().json;\nconst row = $input.first()?.json || {};\n\nconst digitsOnly = (value) => String(value || '').replace(/[^\\d]/g, '');\nconst rawLookup = String(base.lookup_value || '').trim();\nconst leadTicketId = Number(base.ticket_id || row.lead_ticket_id || 0) || null;\nconst leadPhone = digitsOnly(row.lead_phone);\nconst orderTicketPhone = digitsOnly(row.order_ticket_phone);\nconst normalizedLookupDigits = digitsOnly(rawLookup);\n\nconst appId = Number(row.app_id || 0) || 0;\nconst businessId = Number(row.business_id || 0) || 0;\nconst nhanhAccessToken = String(row.nhanh_access_token || '').trim();\n\nlet trackingLookupType = '';\nlet trackingLookupValue = '';\nlet trackingLookupSource = '';\nlet nhanhRequestBody = null;\nlet replyText = '';\nlet auditActionType = 'tracking_lookup_failed';\n\nif (!appId || !businessId || !nhanhAccessToken) {\n  replyText = 'Thiếu cấu hình Nhanh.';\n  auditActionType = 'tracking_lookup_failed';\n} else if (leadTicketId && leadPhone) {\n  trackingLookupType = 'phone';\n  trackingLookupValue = leadPhone;\n  trackingLookupSource = 'ticket_phone';\n} else if (normalizedLookupDigits.length >= 10 && normalizedLookupDigits.length <= 11) {\n  trackingLookupType = 'phone';\n  trackingLookupValue = normalizedLookupDigits;\n  trackingLookupSource = 'lookup_phone';\n} else if (normalizedLookupDigits.length >= 6) {\n  trackingLookupType = 'order_id';\n  trackingLookupValue = normalizedLookupDigits;\n  trackingLookupSource = 'lookup_order_id';\n} else if (orderTicketPhone) {\n  trackingLookupType = 'phone';\n  trackingLookupValue = orderTicketPhone;\n  trackingLookupSource = 'order_ticket_phone';\n} else if (leadTicketId && !leadPhone) {\n  replyText = 'Ticket T-' + leadTicketId + ' chưa có SĐT để tra tracking.';\n  auditActionType = 'tracking_ticket_missing_phone';\n} else {\n  replyText = 'Bạn muốn lấy tracking cho đơn nào?';\n  auditActionType = 'tracking_lookup_guided';\n}\n\nif (trackingLookupType === 'phone') {\n  nhanhRequestBody = {\n    filters: {\n      shippingAddress: {\n        mobile: trackingLookupValue,\n      },\n    },\n    paginator: {\n      size: 3,\n    },\n    dataOptions: {},\n  };\n} else if (trackingLookupType === 'order_id') {\n  nhanhRequestBody = {\n    filters: {\n      ids: [Number(trackingLookupValue)],\n    },\n    paginator: {\n      size: 1,\n    },\n    dataOptions: {},\n  };\n}\n\nreturn [{\n  json: {\n    ...base,\n    ...row,\n    nhanh_app_id: appId,\n    nhanh_business_id: businessId,\n    nhanh_access_token: nhanhAccessToken,\n    tracking_lookup_type: trackingLookupType,\n    tracking_lookup_value: trackingLookupValue,\n    tracking_lookup_source: trackingLookupSource,\n    nhanh_request_body: nhanhRequestBody,\n    can_query_tracking: Boolean(nhanhRequestBody),\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: leadTicketId || '',\n  },\n}];"
+      },
+      "id": "1dd93588-9d0b-408f-8e73-b411c9cf7635",
+      "name": "Code Build Tracking URL Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        69648,
+        26304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.can_query_tracking === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dc6eff36-7f7c-4b38-8e40-fcca6a3a3b69",
+      "name": "If Can Query Tracking URL",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        69872,
+        26304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ `https://pos.open.nhanh.vn/v3.0/order/list?appId=${$json.nhanh_app_id}&businessId=${$json.nhanh_business_id}` }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.nhanh_access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.nhanh_request_body }}",
+        "options": {}
+      },
+      "id": "822f7ca7-35b0-45c9-be0c-798a107d2757",
+      "name": "HTTP Nhanh Order List Tracking",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        70096,
+        26208
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Code Build Tracking URL Query').first().json;\nconst row = $input.first()?.json || {};\n\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst digitsOnly = (value) => String(value || '').replace(/[^\\d]/g, '');\nconst items = Array.isArray(row.data) ? row.data : [];\n\nlet replyText = '';\nlet auditActionType = 'tracking_lookup_failed';\nlet trackingUrl = '';\nlet trackingOrderId = null;\nlet trackingMatchCount = items.length;\n\nconst errorMessage = Array.isArray(row.messages)\n  ? row.messages.map((item) => safeText(item)).filter(Boolean).join('; ')\n  : safeText(row.message || row.messages || row.error || '');\n\nif (row.error || (typeof row.code !== 'undefined' && Number(row.code) !== 1 && !items.length)) {\n  replyText = errorMessage || 'Không lấy được tracking từ Nhanh.';\n  auditActionType = 'tracking_lookup_failed';\n} else if (!items.length) {\n  const ref = base.tracking_lookup_type === 'phone'\n    ? (digitsOnly(base.tracking_lookup_value || '') || '')\n    : safeText(base.tracking_lookup_value || '');\n  replyText = ref ? ('Không thấy đơn trên Nhanh cho ' + ref + '.') : 'Không thấy đơn trên Nhanh.';\n  auditActionType = 'tracking_order_not_found';\n} else {\n  const mapped = items.map((item) => {\n    const orderId = Number(item?.info?.id || 0) || null;\n    const itemTrackingUrl = safeText(item?.info?.trackingUrl || '');\n    const customerName = safeText(item?.shippingAddress?.name || '');\n    const customerMobile = digitsOnly(item?.shippingAddress?.mobile || '');\n    return {\n      order_id: orderId,\n      tracking_url: itemTrackingUrl,\n      customer_name: customerName,\n      customer_mobile: customerMobile,\n    };\n  });\n\n  const firstItem = mapped[0] || {};\n  trackingOrderId = firstItem.order_id || null;\n  trackingUrl = firstItem.tracking_url || '';\n\n  if (base.tracking_lookup_type === 'order_id' || mapped.length === 1) {\n    if (firstItem.tracking_url) {\n      replyText = 'Tracking đơn ' + (firstItem.order_id || base.tracking_lookup_value) + ':\\n' + firstItem.tracking_url;\n      auditActionType = 'tracking_url_viewed';\n    } else {\n      replyText = 'Đơn ' + (firstItem.order_id || base.tracking_lookup_value) + ' chưa có link tracking.';\n      auditActionType = 'tracking_url_missing';\n    }\n  } else {\n    const headerRef = base.ticket_id\n      ? ('T-' + base.ticket_id)\n      : (digitsOnly(base.tracking_lookup_value || '') || base.tracking_lookup_value || '');\n    const lines = ['Tracking gần nhất' + (headerRef ? (' cho ' + headerRef) : '') + ':'];\n    for (const item of mapped.slice(0, 3)) {\n      const titleParts = ['Đơn ' + (item.order_id || '')];\n      if (item.customer_name) titleParts.push(item.customer_name);\n      if (item.customer_mobile) titleParts.push(item.customer_mobile);\n      lines.push(titleParts.filter(Boolean).join(' | '));\n      lines.push(item.tracking_url || 'Chưa có link tracking.');\n    }\n    replyText = lines.join('\\n');\n    auditActionType = mapped.some((item) => item.tracking_url) ? 'tracking_url_listed' : 'tracking_url_missing';\n  }\n}\n\nreturn [{\n  json: {\n    ...base,\n    ...row,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: base.handoff_queue_id || base.ticket_id || '',\n    tracking_url: trackingUrl,\n    tracking_order_id: trackingOrderId,\n    tracking_match_count: trackingMatchCount,\n  },\n}];"
+      },
+      "id": "aae27afd-9fb6-4217-ab62-266494e4cf44",
+      "name": "Code Format Tracking URL Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        26208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Code Build Tracking URL Query').first().json;\n\nreturn [{\n  json: {\n    ...base,\n    reply_text: String(base.reply_text || 'Không lấy được tracking.').trim(),\n    audit_action_type: String(base.audit_action_type || 'tracking_lookup_failed').trim() || 'tracking_lookup_failed',\n    handoff_queue_id: base.handoff_queue_id || base.ticket_id || '',\n    tracking_url: '',\n    tracking_order_id: null,\n    tracking_match_count: null,\n  },\n}];"
+      },
+      "id": "de2f7697-3def-4884-a713-d053e1ee773f",
+      "name": "Code Build Tracking URL Error Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        26400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "select\n  coalesce(app_id, 0)::bigint as nhanh_app_id,\n  coalesce(business_id, 0)::bigint as nhanh_business_id,\n  coalesce(access_token, '') as nhanh_access_token\nfrom public.nhanh_api_tokens\nwhere token_key = 'nhanh_main'\norder by updated_at desc nulls last\nlimit 1;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        69200,
+        26688
+      ],
+      "id": "0f867fc8-5422-4065-aca7-4ff4de664a44",
+      "name": "PG Load Inventory Token",
+      "credentials": {
+        "postgres": {
+          "id": "pKj9yv1GAqmcb6RV",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'check_inventory' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ce27f45e-eaa6-4306-a6c2-c940309c565f",
+      "name": "If Inventory Route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        67408,
+        27696
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Inventory Route').first().json;\nconst row = $input.first()?.json || {};\n\nconst safeText = (value) => String(value || '').replace(/\\s+/g, ' ').trim();\nconst compactArray = (value) => Array.isArray(value) ? value.filter((item) => item && typeof item === 'object') : [];\nconst items = compactArray(row.items);\nconst availableItems = compactArray(row.available_items).length ? compactArray(row.available_items) : items.filter((item) => Number(item.available || 0) > 0);\nconst productQuery = safeText(base.product_query || base.lookup_value || row.product_query || '');\nconst availableCount = Number(row.available_count ?? availableItems.length);\nconst totalCount = Number(row.total ?? items.length);\n\nconst formatItem = (item) => {\n  const name = safeText(item.name || item.full_name || item.product_name || item.code || '');\n  const code = safeText(item.code || item.sku || '');\n  const available = Number(item.available ?? item.available_quantity ?? item.remain ?? item.stock ?? 0);\n  const parts = [];\n  if (name) parts.push(name);\n  if (code && code !== name) parts.push(code);\n  if (Number.isFinite(available)) parts.push('còn ' + available);\n  return parts.filter(Boolean).join(' | ');\n};\n\nlet replyText = '';\nlet auditActionType = 'inventory_checked';\n\nif (row.ok === false) {\n  replyText = safeText(row.message || row.error || 'Không check tồn kho được.');\n  auditActionType = 'inventory_check_failed';\n} else if (availableCount > 0 || availableItems.length > 0) {\n  const lines = [(productQuery || 'Sản phẩm') + ': còn hàng.'];\n  const detailLines = availableItems.map(formatItem).filter(Boolean).slice(0, 5);\n  if (detailLines.length) lines.push(...detailLines);\n  if (!detailLines.length && Number.isFinite(totalCount)) lines.push('Có ' + totalCount + ' kết quả phù hợp.');\n  replyText = lines.join('\\n');\n} else if (row.ok === true) {\n  replyText = (productQuery || 'Sản phẩm') + ': hiện không có hàng.';\n} else {\n  replyText = 'Không check tồn kho được.';\n  auditActionType = 'inventory_check_failed';\n}\n\nreturn [{\n  json: {\n    ...base,\n    ...row,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    inventory_ok: row.ok ?? null,\n    inventory_total: Number.isFinite(totalCount) ? totalCount : items.length,\n    inventory_available_count: Number.isFinite(availableCount) ? availableCount : availableItems.length,\n    handoff_queue_id: base.ticket_id || '',\n  },\n}];"
+      },
+      "id": "9cda32a7-d775-47d2-85e6-056c14071789",
+      "name": "Code Format Inventory Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70320,
+        26688
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('If Inventory Route').first().json;\nconst row = $input.first()?.json || {};\n\nconst productQuery = String(base.product_query || base.lookup_value || '').trim();\nconst maxResultsRaw = Number(base.max_results || 5);\nconst maxResults = Math.max(1, Math.min(10, Number.isFinite(maxResultsRaw) ? maxResultsRaw : 5));\nconst nhanhAccessToken = String(row.nhanh_access_token || '').trim();\nconst nhanhAppId = Number(row.nhanh_app_id || 0) || 0;\nconst nhanhBusinessId = Number(row.nhanh_business_id || 0) || 0;\n\nlet replyText = '';\nlet auditActionType = 'inventory_checked';\nlet canQueryInventory = false;\nlet inventoryUrl = '';\nlet inventoryRequestBody = null;\n\nif (!productQuery) {\n  replyText = 'Bạn muốn check tồn kho mẫu nào?';\n  auditActionType = 'inventory_check_guided';\n} else if (!nhanhAccessToken || !nhanhAppId || !nhanhBusinessId) {\n  replyText = 'Thiếu cấu hình Nhanh.';\n  auditActionType = 'inventory_check_failed';\n} else {\n  canQueryInventory = true;\n  inventoryUrl = `https://pos.open.nhanh.vn/v3.0/product/inventory?appId=${nhanhAppId}&businessId=${nhanhBusinessId}`;\n  inventoryRequestBody = {\n    filters: {\n      name: productQuery,\n    },\n    paginator: {\n      size: maxResults,\n    },\n    dataOptions: {},\n  };\n}\n\nreturn [{\n  json: {\n    ...base,\n    ...row,\n    nhanh_access_token: nhanhAccessToken,\n    nhanh_app_id: nhanhAppId,\n    nhanh_business_id: nhanhBusinessId,\n    product_query: productQuery,\n    max_results: maxResults,\n    can_query_inventory: canQueryInventory,\n    inventory_url: inventoryUrl,\n    inventory_request_body: inventoryRequestBody,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n  },\n}];"
+      },
+      "id": "3c8d3096-7044-4da5-90f5-6c2032cc3135",
+      "name": "Code Build Inventory Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        69424,
+        26688
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.can_query_inventory === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "77859f4f-60ec-4356-b76c-07a96aaf62e4",
+      "name": "If Can Query Inventory",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        69648,
+        26688
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.inventory_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.nhanh_access_token }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.inventory_request_body }}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          }
+        }
+      },
+      "id": "7d504ca0-79df-4572-958f-b56620e3d0dc",
+      "name": "HTTP Nhanh Product Inventory",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        69872,
+        26592
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Code Build Inventory Query').first().json;\nconst payload = $input.first()?.json || {};\n\nif (payload.error) {\n  return [{\n    json: {\n      ...base,\n      ok: false,\n      error_code: 'NHANH_API_ERROR',\n      message: String(payload.error || 'Lỗi Nhanh API'),\n      total: 0,\n      available_count: 0,\n      available_items: [],\n      items: [],\n    },\n  }];\n}\n\nconst root = payload?.data ?? payload?.result ?? payload ?? {};\nconst rawItems = Array.isArray(root?.products)\n  ? root.products\n  : Array.isArray(root?.data)\n    ? root.data\n    : Array.isArray(root)\n      ? root\n      : [];\n\nconst items = rawItems.map((item) => {\n  const inventory = item.inventory ?? {};\n  return {\n    id: item.id ?? item.productId ?? null,\n    code: item.code ?? item.productCode ?? '',\n    name: item.name ?? '',\n    barcode: item.barcode ?? '',\n    price: Number(item?.prices?.price ?? 0),\n    remain: Number(inventory.remain ?? item.remain ?? 0),\n    available: Number(inventory.available ?? item.available ?? 0),\n    shipping: Number(inventory.shipping ?? item.shipping ?? 0),\n    holding: Number(inventory.holding ?? item.holding ?? 0),\n    damaged: Number(inventory.damaged ?? item.damaged ?? item.damage ?? 0),\n    depots: Array.isArray(inventory.depots ?? item.depots) ? (inventory.depots ?? item.depots) : [],\n  };\n}).sort((a, b) => (b.available - a.available) || (b.remain - a.remain) || a.name.localeCompare(b.name, 'vi'));\n\nconst availableItems = items.filter((item) => Number(item.available || 0) > 0);\n\nreturn [{\n  json: {\n    ...base,\n    ok: true,\n    total: items.length,\n    available_count: availableItems.length,\n    available_items: availableItems,\n    items,\n  },\n}];"
+      },
+      "id": "7046a58f-4ff0-4814-bb2a-37fc6787dd8f",
+      "name": "Code Normalize Inventory Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70096,
+        26592
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const base = $('Code Build Inventory Query').first().json;\nreturn [{\n  json: {\n    ...base,\n    ok: false,\n    message: String(base.reply_text || 'Không check tồn kho được.').trim(),\n    total: 0,\n    available_count: 0,\n    available_items: [],\n    items: [],\n  },\n}];"
+      },
+      "id": "ddae5e36-c2de-4e48-ae1d-2b4cb653acbf",
+      "name": "Code Build Inventory Error Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        70096,
+        26784
+      ]
+    },
+    {
+      "id": "6d98bf88-0134-4165-9b7a-1596201c13c7",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ String($json.route_key || '') === 'add_order' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        67632,
+        27792
+      ],
+      "name": "If AddOrder Route"
+    },
+    {
+      "id": "b8296652-fa30-4b54-8de4-c3ed0a5ec305",
+      "parameters": {
+        "source": "localFile",
+        "workflowPath": "/Users/phamhoanghai/n8n/Zalo_AddOrder_From_Ticket.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        67856,
+        27792
+      ],
+      "name": "Run AddOrder Workflow",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "9071f18d-34eb-4b7d-9684-5516e048586e",
+      "parameters": {
+        "jsCode": "const base = $('If AddOrder Route').first().json;\nconst row = $input.first()?.json || {};\nconst replyText = String(row.reply_text || base.reply_text || 'Không xử lý được /addorder.').trim();\nconst auditActionType = String(row.audit_action_type || base.audit_action_type || 'order_draft_replied').trim() || 'order_draft_replied';\n\nreturn [{\n  json: {\n    ...base,\n    ...row,\n    reply_text: replyText,\n    audit_action_type: auditActionType,\n    handoff_queue_id: row.handoff_queue_id || row.ticket_id || base.ticket_id || '',\n    order_draft_id: row.order_draft_id || null,\n    order_draft_status: row.order_draft_status || '',\n    app_order_id: row.app_order_id || '',\n    nhanh_order_id: row.nhanh_order_id || null,\n    created_order_tracking_url: row.created_order_tracking_url || '',\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        68080,
+        27792
+      ],
+      "name": "Code Normalize AddOrder Workflow Reply"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Zalo Group Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Zalo Group Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Zalo Group Event": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Command Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Command Event": {
+      "main": [
+        [
+          {
+            "node": "Parse Zalo Command Draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Zalo Command Draft": {
+      "main": [
+        [
+          {
+            "node": "If Needs AI Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Needs AI Router": {
+      "main": [
+        [
+          {
+            "node": "Merge AI Router Context",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PG Load Recent Zalo Action Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Resolve Zalo Command Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Zalo AI Intent Input": {
+      "main": [
+        [
+          {
+            "node": "AI Zalo Natural Command Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model Zalo Command": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Zalo Natural Command Router",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Zalo Natural Command Router": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize Zalo Natural Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Normalize Zalo Natural Command": {
+      "main": [
+        [
+          {
+            "node": "Resolve Zalo Command Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Zalo Command Route": {
+      "main": [
+        [
+          {
+            "node": "If Has Zalo Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Zalo Route": {
+      "main": [
+        [
+          {
+            "node": "Code Resolve Zalo Command Permission",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Resolve Zalo Command Permission": {
+      "main": [
+        [
+          {
+            "node": "Merge Zalo Command + Token",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "PG Get Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Get Zalo OA Reply Token": {
+      "main": [
+        [
+          {
+            "node": "Merge Zalo Command + Token",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Zalo Command + Token": {
+      "main": [
+        [
+          {
+            "node": "If Static Reply Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Static Reply Route": {
+      "main": [
+        [
+          {
+            "node": "Code Build Static Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Tracking URL Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build Static Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Load Ticket Detail": {
+      "main": [
+        [
+          {
+            "node": "Code Format Get Ticket Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Members Route": {
+      "main": [
+        [
+          {
+            "node": "HTTP List Zalo Group Pending Invite Members",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Approve Member Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP List Zalo Group Pending Invite Members": {
+      "main": [
+        [
+          {
+            "node": "Code Format Members Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Format Members Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Approve Member Route": {
+      "main": [
+        [
+          {
+            "node": "HTTP List Zalo Group Pending Invite Approve",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Remove Member Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP List Zalo Group Pending Invite Approve": {
+      "main": [
+        [
+          {
+            "node": "Code Resolve Pending Invite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Resolve Pending Invite": {
+      "main": [
+        [
+          {
+            "node": "If Has Pending Invite Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Pending Invite Candidate": {
+      "main": [
+        [
+          {
+            "node": "HTTP Accept Zalo Pending Invite",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Format Approve Member Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Accept Zalo Pending Invite": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize Accept Pending Invite",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Normalize Accept Pending Invite": {
+      "main": [
+        [
+          {
+            "node": "Code Format Approve Member Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Format Approve Member Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Insert Zalo Command Audit": {
+      "main": [
+        [
+          {
+            "node": "Ignore Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Zalo OA Reply Token": {
+      "main": [
+        [
+          {
+            "node": "HTTP Reply Zalo Group Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Reply Zalo Group Command": {
+      "main": [
+        [
+          {
+            "node": "Ignore Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Remove Member Route": {
+      "main": [
+        [
+          {
+            "node": "HTTP List Zalo Group Members Remove",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Reject Ticket Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Resolve Remove Member": {
+      "main": [
+        [
+          {
+            "node": "If Has Remove Member Candidate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Remove Member Candidate": {
+      "main": [
+        [
+          {
+            "node": "If Add Admin Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Format Remove Member Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Remove Zalo Group Member": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize Remove Member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Normalize Remove Member": {
+      "main": [
+        [
+          {
+            "node": "Code Format Remove Member Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Format Remove Member Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP List Zalo Group Members Remove": {
+      "main": [
+        [
+          {
+            "node": "Code Resolve Remove Member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Reject Ticket": {
+      "main": [
+        [
+          {
+            "node": "Code Format Reject Ticket Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If List Tickets Route": {
+      "main": [
+        [
+          {
+            "node": "PG Load Ticket List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Get Ticket Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Load Ticket List": {
+      "main": [
+        [
+          {
+            "node": "Code Format Ticket List Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Format Ticket List Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Get Ticket Route": {
+      "main": [
+        [
+          {
+            "node": "PG Load Ticket Detail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Members Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Format Get Ticket Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Reject Ticket Route": {
+      "main": [
+        [
+          {
+            "node": "PG Reject Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ignore Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Format Reject Ticket Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Load Recent Zalo Action Context": {
+      "main": [
+        [
+          {
+            "node": "Merge AI Router Context",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge AI Router Context": {
+      "main": [
+        [
+          {
+            "node": "Set Zalo AI Intent Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Add Admin Action": {
+      "main": [
+        [
+          {
+            "node": "HTTP Add Zalo Group Admin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Remove Admin Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Remove Admin Action": {
+      "main": [
+        [
+          {
+            "node": "HTTP Remove Zalo Group Admin",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Remove Zalo Group Member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Add Zalo Group Admin": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize Remove Member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Remove Zalo Group Admin": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize Remove Member",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Tracking URL Route": {
+      "main": [
+        [
+          {
+            "node": "PG Load Tracking Lookup Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If Inventory Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Load Tracking Lookup Context": {
+      "main": [
+        [
+          {
+            "node": "Code Build Tracking URL Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build Tracking URL Query": {
+      "main": [
+        [
+          {
+            "node": "If Can Query Tracking URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Can Query Tracking URL": {
+      "main": [
+        [
+          {
+            "node": "HTTP Nhanh Order List Tracking",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Build Tracking URL Error Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Nhanh Order List Tracking": {
+      "main": [
+        [
+          {
+            "node": "Code Format Tracking URL Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Format Tracking URL Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build Tracking URL Error Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Inventory Route": {
+      "main": [
+        [
+          {
+            "node": "PG Load Inventory Token",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If AddOrder Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Format Inventory Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Load Inventory Token": {
+      "main": [
+        [
+          {
+            "node": "Code Build Inventory Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build Inventory Query": {
+      "main": [
+        [
+          {
+            "node": "If Can Query Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Can Query Inventory": {
+      "main": [
+        [
+          {
+            "node": "HTTP Nhanh Product Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code Build Inventory Error Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Nhanh Product Inventory": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize Inventory Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Normalize Inventory Result": {
+      "main": [
+        [
+          {
+            "node": "Code Format Inventory Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Build Inventory Error Reply": {
+      "main": [
+        [
+          {
+            "node": "Code Format Inventory Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If AddOrder Route": {
+      "main": [
+        [
+          {
+            "node": "Run AddOrder Workflow",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "If List Tickets Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run AddOrder Workflow": {
+      "main": [
+        [
+          {
+            "node": "Code Normalize AddOrder Workflow Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code Normalize AddOrder Workflow Reply": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Zalo Command Audit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "If Has Zalo OA Reply Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "66dd8d19-e96a-48c5-81fe-a3f85e71979e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "41e49f29cafdfc4ce0bd59d40e7d7bda8c2d2148c515095698e03d3f19dd2937"
+  },
+  "id": "MGvFgvQa9fQghQw4",
+  "tags": []
+}
